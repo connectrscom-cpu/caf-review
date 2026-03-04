@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeDecisionRow, type DecisionCells } from "@/lib/google/sheets";
+import { updateTaskDecision } from "@/lib/data/review-queue";
+import { sendDecisionToWebhook } from "@/lib/webhook";
 import type { DecisionValue } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 const VALID_DECISIONS: DecisionValue[] = ["APPROVED", "NEEDS_EDIT", "REJECTED"];
+const WEBHOOK_URL = process.env.DECISION_WEBHOOK_URL;
 
 export async function POST(
   request: NextRequest,
@@ -40,7 +42,8 @@ export async function POST(
       );
     }
 
-    const payload: DecisionCells = {
+    const submittedAt = new Date().toISOString();
+    const payload = {
       decision: decision as DecisionValue,
       notes: body.notes?.trim() ?? "",
       rejection_tags: Array.isArray(body.rejection_tags)
@@ -48,19 +51,23 @@ export async function POST(
         : "",
       validator: body.validator?.trim() ?? "",
       submit: "TRUE",
-      submitted_at: new Date().toISOString(),
+      submitted_at: submittedAt,
       review_status: "SUBMITTED",
     };
 
-    const { updated, missing_columns } = await writeDecisionRow(decodedId, payload);
+    await updateTaskDecision(decodedId, payload);
 
-    return NextResponse.json({
-      ok: true,
-      updated,
-      missing_columns: missing_columns.length ? missing_columns : undefined,
-    });
+    if (WEBHOOK_URL?.trim()) {
+      await sendDecisionToWebhook(WEBHOOK_URL.trim(), {
+        task_id: decodedId,
+        ...payload,
+        rejection_tags: Array.isArray(body.rejection_tags) ? body.rejection_tags : [],
+      });
+    }
+
+    return NextResponse.json({ ok: true });
   } catch (err) {
-    if (err instanceof Error && err.message === "Task not found") {
+    if (err instanceof Error && err.message.includes("Task not found")) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
     console.error("POST /api/task/[task_id]/decision", err);

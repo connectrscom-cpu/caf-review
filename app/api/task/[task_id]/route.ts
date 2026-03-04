@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readReviewQueue } from "@/lib/google/sheets";
+import { getTaskByTaskId } from "@/lib/data/review-queue";
+import { getReviewQueue } from "@/lib/data/review-queue";
 import type { TaskDetailResponse } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -12,17 +13,12 @@ export async function GET(
     const { task_id } = await params;
     const decodedId = decodeURIComponent(task_id);
 
-    const { rows, keys } = await readReviewQueue();
-    const taskIdKey = "task_id";
-    const rowIndex = rows.findIndex(
-      (row) => (row[taskIdKey] ?? "").trim() === decodedId.trim()
-    );
-
-    if (rowIndex === -1) {
+    const result = await getTaskByTaskId(decodedId);
+    if (!result) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
-    const data = rows[rowIndex];
+    const { keys } = await getReviewQueue();
     const expectedColumns = [
       "task_id",
       "preview_url",
@@ -35,8 +31,7 @@ export async function GET(
     ];
     const missing_columns = expectedColumns.filter((k) => !keys.includes(k));
     const response: TaskDetailResponse = {
-      rowIndex: rowIndex + 2,
-      data,
+      ...result,
       ...(missing_columns.length > 0 ? { missing_columns } : {}),
     };
     return NextResponse.json(response);

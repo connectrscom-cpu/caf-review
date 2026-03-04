@@ -1,32 +1,22 @@
 # Push CAF Review Console to GitHub
 
-Your project is committed locally. To put it on GitHub:
+**This project uses the [connectrscom-cpu](https://github.com/connectrscom-cpu) GitHub account only.** Other repos can keep using your default account (e.g. Ecletica-web).
 
-## 1. Create a new repository on GitHub
+- **Remote:** `origin` → `https://github.com/connectrscom-cpu/caf-review.git`
+- **Local config:** `credential.useHttpPath = true` so Git stores credentials per repo URL; connectrscom-cpu login applies only to this project.
 
-- Go to [github.com/new](https://github.com/new)
-- **Repository name:** e.g. `caf-review` or `CAF`
-- **Public**, no README / .gitignore / license (this repo already has them)
-- Click **Create repository**
+## 1. Create the repository (one-time)
 
-## 2. Add remote and push (from the CAF folder)
+- Go to [github.com/new](https://github.com/new) **while logged in as connectrscom-cpu**
+- **Owner:** `connectrscom-cpu` · **Repository name:** `caf-review`
+- **Public**; leave README / .gitignore / license **unchecked** · Create repository
 
-Replace `YOUR_USERNAME` and `YOUR_REPO` with your GitHub username and repo name:
+## 2. Push (from the CAF folder)
 
 ```bash
 cd "c:\Users\migue\OneDrive\Ambiente de Trabalho\Pessoal\Cursor\CAF"
 
-git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO.git
-git branch -M main
 git push -u origin main
 ```
 
-Example if your user is `migue` and repo is `caf-review`:
-
-```bash
-git remote add origin https://github.com/migue/caf-review.git
-git branch -M main
-git push -u origin main
-```
-
-Done. Your code will be on GitHub and you can clone or deploy from there.
+When prompted, sign in as **connectrscom-cpu** (or use a [personal access token](https://github.com/settings/tokens) for that account). That credential will be used only for this repo.

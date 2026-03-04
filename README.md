@@ -1,43 +1,45 @@
 # CAF Review Console
 
-Human validation console for the CAF (Content Automation Framework) pipeline. Reads and writes the **Review_Queue** Google Sheet as the source of truth.
+Human validation console for the CAF pipeline. **Reads tasks and assets from your Supabase project** and **writes review decisions back to Supabase**. Optional webhook to notify n8n after each decision.
 
-## Prerequisites
+## Supabase schema
 
-1. **Google Cloud project** with **Google Sheets API** enabled
-2. **Service Account** with a **JSON key**
-3. The Google Sheet shared with the service account email (**Editor**)
+The app expects your existing **CAF Storage** schema:
+
+- **`tasks`** — one row per content task (`task_id`, `run_id`, `project`, `platform`, `flow_type`, `variation_name`, `status`, `recommended_route`, `preview_url`, …).
+- **`assets`** — linked by `task_id`; used for `video_url` when the task has no `preview_url` (first asset’s `public_url`).
+- **`runs`** — referenced by `tasks.run_id`.
+
+**Review columns on `tasks`** (add if missing): run the migration in **Supabase → SQL Editor**:
+
+```sql
+-- See supabase/migrations/20250304000000_add_review_columns_to_tasks.sql
+ALTER TABLE public.tasks
+  ADD COLUMN IF NOT EXISTS decision text,
+  ADD COLUMN IF NOT EXISTS notes text,
+  ADD COLUMN IF NOT EXISTS rejection_tags text,
+  ADD COLUMN IF NOT EXISTS validator text,
+  ADD COLUMN IF NOT EXISTS submit text,
+  ADD COLUMN IF NOT EXISTS submitted_at timestamptz;
+```
 
 ## Environment variables
 
-### Vercel / Production
-
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Yes | Service account email |
-| `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | Yes | Private key (multiline; in Vercel replace `\n` with real newlines or use `replace(/\\n/g, '\n')` in code — already handled) |
-| `GOOGLE_SHEET_ID` | Yes | Spreadsheet ID from the sheet URL |
-| `REVIEW_QUEUE_TAB` | No | Tab name (default: `Review_Queue`) |
-| `REVIEW_WRITE_TOKEN` | Yes | Secret for `x-review-token` header on POST decision (protect write endpoint) |
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL (e.g. `https://xxxxx.supabase.co`) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Service role key (Project Settings → API). Used server-side only. |
+| `REVIEW_WRITE_TOKEN` | Yes | Secret for `x-review-token` header when submitting decisions |
+| `DECISION_WEBHOOK_URL` | No | If set, app POSTs decision payload here after saving to Supabase (e.g. n8n) |
+| `CACHE_TTL_SECONDS` | No | Cache for task list (default 15) |
 | `NEXT_PUBLIC_APP_URL` | No | App URL for links |
-| `CACHE_TTL_SECONDS` | No | Sheet read cache TTL (default: 15) |
-
-### Optional client-side
-
-- `NEXT_PUBLIC_REVIEW_WRITE_TOKEN` — if set, the decision form can submit without prompting for the token (only use if the app is not public).
-
-## What you need to provide
-
-1. **`GOOGLE_SHEET_ID`** — from the sheet URL: `https://docs.google.com/spreadsheets/d/<SHEET_ID>/edit`
-2. **`REVIEW_QUEUE_TAB`** — exact tab name (e.g. `Review_Queue`)
-3. **Header row** — first row of the Review_Queue sheet (for column mapping). The app normalizes headers (trim, lowercase, spaces → `_`).
-4. **Decision values** — must match downstream n8n: `APPROVED`, `NEEDS_EDIT`, `REJECTED`.
+| `NEXT_PUBLIC_REVIEW_WRITE_TOKEN` | No | Pre-fill token in browser (only if app is private) |
 
 ## Run locally
 
 ```bash
 npm install
-cp .env.example .env   # then fill in values
+cp .env.example .env   # set NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, REVIEW_WRITE_TOKEN
 npm run dev
 ```
 
@@ -45,23 +47,22 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Deploy (Vercel)
 
-1. Push to GitHub and connect the repo in Vercel.
-2. Add the environment variables above in Project → Settings → Environment Variables.
-3. Deploy.
+1. Import the repo and add the env vars above.
+2. Deploy.
 
 ## Routes
 
-- **`/`** — Workbench: filter and list tasks, link to task detail
-- **`/r/[run_id]`** — Run view: same list filtered by `run_id`, “Review next pending” button
-- **`/t/[task_id]`** — Task detail: preview (preview_url → video_url → slides JSON) + decision panel (Approve / Needs Edit / Reject)
+- **`/`** — Workbench: filter and list tasks from Supabase
+- **`/r/[run_id]`** — Run view: list filtered by run, “Review next pending”
+- **`/t/[task_id]`** — Task: preview (`preview_url` → `video_url` from assets → slides JSON) + decision panel
 
 ## API
 
-- **`GET /api/tasks`** — List tasks (query params: project, run_id, platform, flow_type, review_status, decision, recommended_route, qc_status, risk_score_min, has_preview, search, sort, page, limit)
-- **`GET /api/task/[task_id]`** — Single task by `task_id`
-- **`POST /api/task/[task_id]/decision`** — Write decision (body: `decision`, `notes`, `rejection_tags`, `validator`; header: `x-review-token`)
+- **`GET /api/tasks`** — List tasks (from Supabase), with filtering, sort, pagination
+- **`GET /api/task/[task_id]`** — Single task (and first asset for video_url)
+- **`POST /api/task/[task_id]/decision`** — Saves decision to Supabase (`tasks.decision`, `notes`, `rejection_tags`, `validator`, `submit`, `submitted_at`, `status`). If `DECISION_WEBHOOK_URL` is set, also POSTs the payload to that URL.
 
-## Resilience
+## Data flow
 
-- Headers are normalized (trim, lowercase); extra spaces in sheet headers are handled.
-- If expected columns are missing, the API returns `missing_columns[]` and the app does not crash; UI can hide controls for missing fields.
+1. **Read**: `tasks` (+ first asset per task for video) → workbench and task detail.
+2. **Write**: Submit decision → update `tasks` row in Supabase → optional webhook call.

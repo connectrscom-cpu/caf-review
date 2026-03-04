@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readReviewQueue } from "@/lib/google/sheets";
+import { getReviewQueue } from "@/lib/data/review-queue";
 import { filterRows, sortRows, paginateRows } from "@/lib/filters";
 import type { TaskListParams } from "@/lib/types";
 
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   ];
 
   try {
-    const { keys, rows } = await readReviewQueue();
+    const { keys, rows } = await getReviewQueue();
     const missing_columns = EXPECTED_COLUMNS.filter((k) => !keys.includes(k));
 
     const params: TaskListParams = {

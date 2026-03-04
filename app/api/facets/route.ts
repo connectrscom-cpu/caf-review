@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readReviewQueue } from "@/lib/google/sheets";
+import { getReviewQueue } from "@/lib/data/review-queue";
 
 export const dynamic = "force-dynamic";
 
@@ -7,7 +7,7 @@ const FACET_KEYS = ["project", "run_id", "platform", "flow_type", "recommended_r
 
 export async function GET() {
   try {
-    const { rows } = await readReviewQueue();
+    const { rows } = await getReviewQueue();
     const facets: Record<string, string[]> = {};
     for (const key of FACET_KEYS) {
       const set = new Set<string>();
