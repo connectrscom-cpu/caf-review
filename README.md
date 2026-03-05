@@ -1,6 +1,10 @@
-# CAF Review Console
+# CAF Backend
 
-Human validation console for the CAF pipeline. **Reads tasks and assets from your Supabase project** and **writes review decisions back to Supabase**. Optional webhook to notify n8n after each decision.
+Operational backend for the **Content Automation Framework (CAF)**. It hosts the **Renderer API** (generate assets from JSON), **Template Playground** (preview and test templates), and **Review Console** (review and approve generated content).
+
+For architecture, scope change, renderer integration, and deployment requirements, see **[AGENTS.md](AGENTS.md)**.
+
+This repo includes the Review Console (human validation), which reads tasks and assets from Supabase and writes review decisions back. Optional webhook notifies n8n after each decision.
 
 ## Supabase schema
 
@@ -34,16 +38,27 @@ ALTER TABLE public.tasks
 | `CACHE_TTL_SECONDS` | No | Cache for task list (default 15) |
 | `NEXT_PUBLIC_APP_URL` | No | App URL for links |
 | `NEXT_PUBLIC_REVIEW_WRITE_TOKEN` | No | Pre-fill token in browser (only if app is private) |
+| `RENDERER_BASE_URL` | No* | Renderer base URL (e.g. `http://localhost:3333`). Required for Playground and Renderer Settings. n8n should use this for `/render` (no hardcoded tunnel). |
 
 ## Run locally
 
+1. **Next.js app (Review Console, Playground, Settings)**
+
 ```bash
 npm install
-cp .env.example .env   # set NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, REVIEW_WRITE_TOKEN
+cp .env.example .env   # set NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, REVIEW_WRITE_TOKEN, RENDERER_BASE_URL
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+2. **Renderer (for Template Playground and n8n)**
+
+```bash
+cd services/renderer && npm install && npm start
+```
+
+Runs on port 3333. Set `RENDERER_BASE_URL=http://localhost:3333` in the main app `.env`.
 
 ## Deploy (Vercel)
 
@@ -54,13 +69,18 @@ Open [http://localhost:3000](http://localhost:3000).
 
 - **`/`** — Workbench: filter and list tasks from Supabase
 - **`/r/[run_id]`** — Run view: list filtered by run, “Review next pending”
-- **`/t/[task_id]`** — Task: preview (`preview_url` → `video_url` from assets → slides JSON) + decision panel
+- **`/t/[task_id]`** — Task: preview + decision panel
+- **`/playground`** — Template Playground: choose template, paste slide JSON, preview
+- **`/settings/renderer`** — Renderer Settings / Health: RENDERER_BASE_URL, status, version
 
 ## API
 
 - **`GET /api/tasks`** — List tasks (from Supabase), with filtering, sort, pagination
 - **`GET /api/task/[task_id]`** — Single task (and first asset for video_url)
-- **`POST /api/task/[task_id]/decision`** — Saves decision to Supabase (`tasks.decision`, `notes`, `rejection_tags`, `validator`, `submit`, `submitted_at`, `status`). If `DECISION_WEBHOOK_URL` is set, also POSTs the payload to that URL.
+- **`POST /api/task/[task_id]/decision`** — Saves decision to Supabase
+- **`GET /api/renderer/health`** — Renderer health (base_url, reachable, version, uptime)
+- **`GET /api/renderer/templates`** — List template names from renderer
+- **`POST /api/renderer/preview`** — Preview one slide (body: `{ template, data }`), returns PNG (`tasks.decision`, `notes`, `rejection_tags`, `validator`, `submit`, `submitted_at`, `status`). If `DECISION_WEBHOOK_URL` is set, also POSTs the payload to that URL.
 
 ## Data flow
 

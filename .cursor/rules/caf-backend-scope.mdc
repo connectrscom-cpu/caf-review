@@ -1,0 +1,18 @@
+---
+description: CAF Backend platform scope — Renderer API, Template Playground, Review Console; renderer migrated, not rewritten
+alwaysApply: true
+---
+
+# CAF Backend Scope
+
+This repo is the **CAF Backend platform**, not just a review app.
+
+It must host:
+
+1. **Renderer API** — generate assets from JSON (Puppeteer + Handlebars; lives in `services/renderer`)
+2. **Template Playground** — preview and test carousel templates
+3. **Review Console** — review and approve generated content (Supabase tasks/assets)
+
+The renderer was **migrated** from the standalone caf-renderer project into `services/renderer`. Do not rewrite its core logic; extend it (e.g. `/render-carousel`, `/preview-template`) and keep the same engine for API and playground.
+
+For full architecture, deployment requirements (`RENDERER_BASE_URL`, stable URL, no tunnel dependency), and migration details, see **AGENTS.md** at the repo root.
