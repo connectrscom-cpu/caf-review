@@ -77,8 +77,8 @@ export async function getReviewQueue(): Promise<ReviewQueueData> {
   let assetsByTask: Record<string, { public_url?: string }> = {};
   let assetsByBase: Record<string, { public_url?: string }> = {};
   if (taskIds.length > 0) {
-    const baseIds = [...new Set(taskIds.map((id) => baseTaskId(id)))];
-    const allIds = [...new Set([...taskIds, ...baseIds])];
+    const baseIds = Array.from(new Set(taskIds.map((id) => baseTaskId(id))));
+    const allIds = Array.from(new Set(taskIds.concat(baseIds)));
     const { data: assetsData } = await getSupabase()
       .from("assets")
       .select("task_id, public_url, asset_type, bucket, object_path")
