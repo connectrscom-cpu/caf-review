@@ -31,6 +31,7 @@ export async function POST(
       final_hook_override?: string | null;
       final_caption_override?: string | null;
       final_slides_json_override?: string | null;
+      template_key?: string | null;
     };
     try {
       body = await request.json();
@@ -65,6 +66,7 @@ export async function POST(
         body.final_caption_override != null ? String(body.final_caption_override).trim() || null : null,
       final_slides_json_override:
         body.final_slides_json_override != null ? String(body.final_slides_json_override) : null,
+      template_key: body.template_key != null ? String(body.template_key).trim() || null : null,
     };
 
     await updateTaskDecision(decodedId, payload);

@@ -26,6 +26,8 @@ export interface DecisionPanelProps {
   finalHookOverride?: string;
   finalCaptionOverride?: string;
   finalSlidesJsonOverride?: string;
+  /** Template for rework (saved with decision, used when re-rendering) */
+  templateKey?: string;
 }
 
 export function DecisionPanel({
@@ -37,6 +39,7 @@ export function DecisionPanel({
   finalHookOverride,
   finalCaptionOverride,
   finalSlidesJsonOverride,
+  templateKey,
 }: DecisionPanelProps) {
   const [decision, setDecision] = useState<DecisionValue | "">(
     (existingDecision as DecisionValue) || ""
@@ -80,6 +83,7 @@ export function DecisionPanel({
           ...(finalHookOverride !== undefined && { final_hook_override: finalHookOverride }),
           ...(finalCaptionOverride !== undefined && { final_caption_override: finalCaptionOverride }),
           ...(finalSlidesJsonOverride !== undefined && { final_slides_json_override: finalSlidesJsonOverride }),
+          ...(templateKey !== undefined && { template_key: templateKey || null }),
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -105,6 +109,7 @@ export function DecisionPanel({
     finalHookOverride,
     finalCaptionOverride,
     finalSlidesJsonOverride,
+    templateKey,
   ]);
 
   const toggleTag = (tag: string) => {

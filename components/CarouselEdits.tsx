@@ -26,6 +26,11 @@ export interface CarouselEditsProps {
   extraFields?: Record<string, string>;
   /** When true, do not show Export button here (use separate block at end of review). */
   exportAtEnd?: boolean;
+  /** Selected template for rework (dropdown). */
+  templateKey?: string;
+  onTemplateKeyChange?: (value: string) => void;
+  /** List of template names for dropdown (from renderer). */
+  templateOptions?: string[];
 }
 
 /**
@@ -45,6 +50,9 @@ export function CarouselEdits({
   onCaptionChange,
   extraFields = {},
   exportAtEnd = false,
+  templateKey = "",
+  onTemplateKeyChange,
+  templateOptions = [],
 }: CarouselEditsProps) {
   const exportEdited = useCallback(() => {
     const slidesPayload = buildSlidesJson(editedSlides, rawPayload);
@@ -94,6 +102,24 @@ export function CarouselEdits({
         />
       </div>
 
+      {templateOptions.length > 0 && (
+        <div className="grid gap-2">
+          <Label className="text-xs">Template (for rework)</Label>
+          <select
+            value={templateKey}
+            onChange={(e) => onTemplateKeyChange?.(e.target.value)}
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            <option value="">— Keep current —</option>
+            {templateOptions.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="grid gap-2">
         <Label className="text-xs">Final caption override</Label>
         <textarea
@@ -128,6 +154,7 @@ export interface CarouselEditsExportProps {
   finalTitleOverride: string;
   finalHookOverride: string;
   generatedCaption: string;
+  templateKey?: string;
   extraFields?: Record<string, string>;
 }
 
@@ -139,6 +166,7 @@ export function CarouselEditsExport({
   finalTitleOverride,
   finalHookOverride,
   generatedCaption,
+  templateKey,
   extraFields = {},
 }: CarouselEditsExportProps) {
   const exportEdited = useCallback(() => {
@@ -150,6 +178,7 @@ export function CarouselEditsExport({
       final_hook_override: finalHookOverride.trim() || undefined,
       final_caption_override: generatedCaption.trim() || undefined,
       final_slides_json_override: slidesPayload,
+      ...(templateKey?.trim() && { template_key: templateKey.trim() }),
       ...extraFields,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
@@ -161,7 +190,7 @@ export function CarouselEditsExport({
     a.download = `rework-${taskId}-edited.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [taskId, runId, editedSlides, rawPayload, finalTitleOverride, finalHookOverride, generatedCaption, extraFields]);
+  }, [taskId, runId, editedSlides, rawPayload, finalTitleOverride, finalHookOverride, generatedCaption, templateKey, extraFields]);
 
   return (
     <div className="space-y-2 rounded-lg border bg-card p-4 text-card-foreground">

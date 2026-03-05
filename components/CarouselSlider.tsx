@@ -76,14 +76,34 @@ export function CarouselSlider({
         </span>
       </div>
 
-      {/* Image for current slide */}
+      {/* Image for current slide with black arrows beside it */}
       {imageUrl && (
-        <div className="overflow-hidden rounded-lg border bg-card">
-          <img
-            src={imageUrl}
-            alt={`Slide ${currentIndex + 1}`}
-            className="h-auto w-full max-h-[50vh] object-contain"
-          />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            aria-label="Previous slide"
+            onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
+            disabled={!canPrev}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black text-white shadow-md disabled:opacity-40 disabled:cursor-not-allowed hover:enabled:bg-black/90"
+          >
+            <span className="text-xl leading-none">‹</span>
+          </button>
+          <div className="min-w-0 flex-1 overflow-hidden rounded-lg border bg-card">
+            <img
+              src={imageUrl}
+              alt={`Slide ${currentIndex + 1}`}
+              className="h-auto w-full max-h-[50vh] object-contain"
+            />
+          </div>
+          <button
+            type="button"
+            aria-label="Next slide"
+            onClick={() => setCurrentIndex((i) => Math.min(total - 1, i + 1))}
+            disabled={!canNext}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black text-white shadow-md disabled:opacity-40 disabled:cursor-not-allowed hover:enabled:bg-black/90"
+          >
+            <span className="text-xl leading-none">›</span>
+          </button>
         </div>
       )}
 

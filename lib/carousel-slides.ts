@@ -11,14 +11,16 @@ export interface NormalizedSlide {
 }
 
 export interface CarouselSlidesPayload {
-  cover_slide?: { headline?: string; body?: string };
-  body_slides?: Array<{ headline?: string; body?: string }>;
+  cover_slide?: { headline?: string; title?: string; heading?: string; body?: string; text?: string; content?: string };
+  body_slides?: Array<{ headline?: string; title?: string; heading?: string; body?: string; text?: string; content?: string }>;
   cta_slide?: { body?: string; handle?: string };
   cover?: string;
   cover_subtitle?: string;
   intro_title?: string;
   cta_text?: string;
   cta_handle?: string;
+  /** Flat list of slides (alternative to cover_slide + body_slides + cta_slide). */
+  slides?: Array<{ headline?: string; title?: string; heading?: string; body?: string; text?: string; content?: string }>;
   [key: string]: unknown;
 }
 
@@ -50,10 +52,31 @@ export function parseSlidesFromJson(json: string | undefined): {
     const slides: NormalizedSlide[] = [];
     let index = 0;
 
-    const cover = (raw.cover_slide ?? {}) as { headline?: string; title?: string; body?: string; text?: string };
+    const textFrom = (o: Record<string, unknown>, headlineKeys: string[], bodyKeys: string[]) => ({
+      headline: String(headlineKeys.map((k) => o[k]).find((v) => v != null && String(v).trim()) ?? ""),
+      body: String(bodyKeys.map((k) => o[k]).find((v) => v != null && String(v).trim()) ?? ""),
+    });
+
+    if (Array.isArray(raw.slides) && raw.slides.length > 0) {
+      for (let i = 0; i < raw.slides.length; i++) {
+        const s = raw.slides[i] as Record<string, unknown>;
+        const { headline, body } = textFrom(s, ["headline", "title", "heading"], ["body", "text", "content"]);
+        const type = i === 0 ? "cover" : i === raw.slides.length - 1 ? "cta" : "body";
+        slides.push({
+          index: index++,
+          type,
+          headline,
+          body: type === "cta" ? body : body,
+          handle: String(s.handle ?? s.cta_handle ?? ""),
+        });
+      }
+      return { slides, raw };
+    }
+
+    const cover = (raw.cover_slide ?? {}) as Record<string, unknown>;
     const coverHeadline =
-      (raw.cover as string) ?? cover.headline ?? cover.title ?? (raw.intro_title as string) ?? "";
-    const coverBody = (raw.cover_subtitle as string) ?? cover.body ?? cover.text ?? "";
+      (raw.cover as string) ?? (cover.headline ?? cover.title ?? cover.heading ?? raw.intro_title) ?? "";
+    const coverBody = (raw.cover_subtitle as string) ?? (cover.body ?? cover.text ?? cover.content) ?? "";
     slides.push({
       index: index++,
       type: "cover",
@@ -64,22 +87,23 @@ export function parseSlidesFromJson(json: string | undefined): {
 
     const bodySlides = Array.isArray(raw.body_slides) ? raw.body_slides : [];
     for (const s of bodySlides) {
-      const obj = s as { headline?: string; title?: string; body?: string; text?: string };
+      const obj = s as Record<string, unknown>;
+      const { headline, body } = textFrom(obj, ["headline", "title", "heading"], ["body", "text", "content"]);
       slides.push({
         index: index++,
         type: "body",
-        headline: String(obj.headline ?? obj.title ?? ""),
-        body: String(obj.body ?? obj.text ?? ""),
+        headline,
+        body,
         handle: "",
       });
     }
 
-    const cta = raw.cta_slide ?? {};
+    const cta = (raw.cta_slide ?? {}) as Record<string, unknown>;
     slides.push({
       index: index++,
       type: "cta",
       headline: "",
-      body: String((raw.cta_text as string) ?? (cta.body as string) ?? ""),
+      body: String((raw.cta_text as string) ?? cta.body ?? cta.text ?? ""),
       handle: String((raw.cta_handle as string) ?? (cta.handle as string) ?? ""),
     });
 

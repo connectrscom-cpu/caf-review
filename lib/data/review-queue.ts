@@ -147,6 +147,7 @@ export interface DecisionUpdate {
   final_hook_override?: string | null;
   final_caption_override?: string | null;
   final_slides_json_override?: string | null;
+  template_key?: string | null;
 }
 
 export async function updateTaskDecision(
@@ -167,6 +168,7 @@ export async function updateTaskDecision(
       final_hook_override: payload.final_hook_override ?? null,
       final_caption_override: payload.final_caption_override ?? null,
       final_slides_json_override: payload.final_slides_json_override ?? null,
+      template_key: payload.template_key ?? null,
       updated_at: new Date().toISOString(),
     })
     .eq("task_id", taskId);

@@ -39,6 +39,8 @@ export default function TaskPage() {
   const [editedCaption, setEditedCaption] = useState("");
   const [editedTitle, setEditedTitle] = useState("");
   const [editedHook, setEditedHook] = useState("");
+  const [templateKey, setTemplateKey] = useState("");
+  const [templateOptions, setTemplateOptions] = useState<string[]>([]);
 
   useEffect(() => {
     setEditedSlides([]);
@@ -61,7 +63,15 @@ export default function TaskPage() {
     setEditedCaption((data.generated_caption ?? "").trim());
     setEditedTitle((data.final_title_override ?? data.generated_title ?? "").trim());
     setEditedHook((data.final_hook_override ?? data.generated_hook ?? "").trim());
-  }, [data?.generated_caption, data?.generated_title, data?.generated_hook, data?.final_title_override, data?.final_hook_override, data?.task_id]);
+    setTemplateKey((data.template_key ?? "").trim());
+  }, [data?.generated_caption, data?.generated_title, data?.generated_hook, data?.final_title_override, data?.final_hook_override, data?.template_key, data?.task_id]);
+
+  useEffect(() => {
+    fetch("/api/renderer/templates")
+      .then((r) => (r.ok ? r.json() : { templates: [] }))
+      .then((d: { templates?: string[] }) => setTemplateOptions(Array.isArray(d.templates) ? d.templates : []))
+      .catch(() => setTemplateOptions([]));
+  }, []);
 
   const fetchTask = useCallback(async () => {
     if (!task_id) return;
@@ -194,6 +204,9 @@ export default function TaskPage() {
                   generated_hook: (data.generated_hook ?? "").trim(),
                 }}
                 exportAtEnd
+                templateKey={templateKey}
+                onTemplateKeyChange={setTemplateKey}
+                templateOptions={templateOptions}
               />
               <DecisionPanel
                 taskId={task_id}
@@ -204,6 +217,7 @@ export default function TaskPage() {
                 finalHookOverride={editedHook}
                 finalCaptionOverride={editedCaption}
                 finalSlidesJsonOverride={finalSlidesJsonOverride}
+                templateKey={templateKey}
               />
               <CarouselEditsExport
                 taskId={task_id}
@@ -213,6 +227,7 @@ export default function TaskPage() {
                 finalTitleOverride={editedTitle}
                 finalHookOverride={editedHook}
                 generatedCaption={editedCaption}
+                templateKey={templateKey}
                 extraFields={{
                   generated_title: (data.generated_title ?? "").trim(),
                   generated_hook: (data.generated_hook ?? "").trim(),
