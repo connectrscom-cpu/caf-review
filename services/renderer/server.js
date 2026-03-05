@@ -358,6 +358,25 @@ app.get("/templates", (_, res) => {
   }
 });
 
+// GET /templates/source/:name — return raw .hbs contents for editor usage.
+app.get("/templates/source/:name", (req, res) => {
+  try {
+    const rawName = req.params.name || "";
+    const safeName = path.basename(rawName);
+    if (!safeName.endsWith(".hbs")) {
+      return res.status(400).json({ ok: false, error: "Template name must end with .hbs" });
+    }
+    const filePath = path.join(TEMPLATES_DIR, safeName);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ ok: false, error: "Template not found" });
+    }
+    const source = fs.readFileSync(filePath, "utf8");
+    res.json({ ok: true, name: safeName, source });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // POST /preview-template — used by template playground. Body: { template, data }. Renders slide 1 only, returns result_url.
 app.post("/preview-template", async (req, res) => {
   let body = normalizeBody(req.body);
