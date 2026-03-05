@@ -1,0 +1,107 @@
+/**
+ * Normalized slide for the review slider: one entry per "card" (cover, body slides, CTA).
+ * Used to show one slide at a time and edit text fields.
+ */
+export interface NormalizedSlide {
+  index: number;
+  type: "cover" | "body" | "cta";
+  headline: string;
+  body: string;
+  handle: string;
+}
+
+export interface CarouselSlidesPayload {
+  cover_slide?: { headline?: string; body?: string };
+  body_slides?: Array<{ headline?: string; body?: string }>;
+  cta_slide?: { body?: string; handle?: string };
+  cover?: string;
+  cover_subtitle?: string;
+  intro_title?: string;
+  cta_text?: string;
+  cta_handle?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Parse generated_slides_json into a flat list of normalized slides (cover, body, cta)
+ * so we can show one per "flashcard" and edit text.
+ */
+export function parseSlidesFromJson(json: string | undefined): {
+  slides: NormalizedSlide[];
+  raw: CarouselSlidesPayload | null;
+} {
+  if (!json?.trim()) return { slides: [], raw: null };
+  try {
+    const raw = JSON.parse(json) as CarouselSlidesPayload;
+    const slides: NormalizedSlide[] = [];
+    let index = 0;
+
+    const cover = raw.cover_slide ?? {};
+    const coverHeadline =
+      (raw.cover as string) ?? (cover.headline as string) ?? (raw.intro_title as string) ?? "";
+    const coverBody = (raw.cover_subtitle as string) ?? (cover.body as string) ?? "";
+    slides.push({
+      index: index++,
+      type: "cover",
+      headline: String(coverHeadline ?? ""),
+      body: String(coverBody ?? ""),
+      handle: "",
+    });
+
+    const bodySlides = Array.isArray(raw.body_slides) ? raw.body_slides : [];
+    for (const s of bodySlides) {
+      slides.push({
+        index: index++,
+        type: "body",
+        headline: String((s as { headline?: string }).headline ?? ""),
+        body: String((s as { body?: string }).body ?? ""),
+        handle: "",
+      });
+    }
+
+    const cta = raw.cta_slide ?? {};
+    slides.push({
+      index: index++,
+      type: "cta",
+      headline: "",
+      body: String((raw.cta_text as string) ?? (cta.body as string) ?? ""),
+      handle: String((raw.cta_handle as string) ?? (cta.handle as string) ?? ""),
+    });
+
+    return { slides, raw };
+  } catch {
+    return { slides: [], raw: null };
+  }
+}
+
+/**
+ * Rebuild carousel JSON payload from normalized slides and optional extra fields.
+ * Preserves raw keys we didn't touch; replaces cover_slide, body_slides, cta_slide (and related top-level).
+ */
+export function buildSlidesJson(
+  slides: NormalizedSlide[],
+  raw: CarouselSlidesPayload | null
+): CarouselSlidesPayload {
+  const out: CarouselSlidesPayload = raw ? { ...raw } : {};
+
+  const cover = slides.find((s) => s.type === "cover");
+  const bodySlides = slides.filter((s) => s.type === "body");
+  const cta = slides.find((s) => s.type === "cta");
+
+  if (cover) {
+    out.cover_slide = { headline: cover.headline || undefined, body: cover.body || undefined };
+    out.cover = cover.headline || undefined;
+    out.cover_subtitle = cover.body || undefined;
+    out.intro_title = cover.headline || undefined;
+  }
+  if (bodySlides.length) {
+    out.body_slides = bodySlides.map((s) => ({ headline: s.headline || undefined, body: s.body || undefined }));
+  }
+  if (cta) {
+    out.cta_slide = { body: cta.body || undefined, handle: cta.handle || undefined };
+    out.cta_text = cta.body || undefined;
+    out.cta_handle = cta.handle || undefined;
+  }
+
+  return out;
+}

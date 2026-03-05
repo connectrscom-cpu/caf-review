@@ -27,6 +27,10 @@ export async function POST(
       notes?: string;
       rejection_tags?: string[];
       validator?: string;
+      final_title_override?: string | null;
+      final_hook_override?: string | null;
+      final_caption_override?: string | null;
+      final_slides_json_override?: string | null;
     };
     try {
       body = await request.json();
@@ -53,6 +57,14 @@ export async function POST(
       submit: "TRUE",
       submitted_at: submittedAt,
       review_status: "SUBMITTED",
+      final_title_override:
+        body.final_title_override != null ? String(body.final_title_override).trim() || null : null,
+      final_hook_override:
+        body.final_hook_override != null ? String(body.final_hook_override).trim() || null : null,
+      final_caption_override:
+        body.final_caption_override != null ? String(body.final_caption_override).trim() || null : null,
+      final_slides_json_override:
+        body.final_slides_json_override != null ? String(body.final_slides_json_override) : null,
     };
 
     await updateTaskDecision(decodedId, payload);

@@ -5,6 +5,16 @@ const { randomUUID } = require("crypto");
 const Handlebars = require("handlebars");
 const puppeteer = require("puppeteer");
 
+// Only exit on uncaughtException. Do NOT exit on unhandledRejection — stray rejections
+// (e.g. from Puppeteer or after first request) would kill the server and cause "works once, then stops".
+process.on("uncaughtException", (err) => {
+  console.error("[fatal] uncaughtException", err?.message || err);
+  process.exit(1);
+});
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[warn] unhandledRejection (server stays up)", reason);
+});
+
 let RENDERER_VERSION = "1.0.0";
 try {
   RENDERER_VERSION = require("./package.json").version;
@@ -54,6 +64,21 @@ let browserLaunchPromise = null;
 
 // Only one render at a time to avoid OOM from multiple Chrome pages (e.g. n8n sending 15 parallel /render-binary).
 let renderQueue = Promise.resolve();
+let renderCount = 0;
+
+/** Close browser and clear queue so next request gets a fresh process. Call before a new flow run if you want a clean slate. */
+async function resetBrowser() {
+  if (sharedBrowser && sharedBrowser.connected) {
+    await sharedBrowser.close().catch(() => {});
+  }
+  sharedBrowser = null;
+  browserLaunchPromise = null;
+  renderQueue = Promise.resolve();
+  renderCount = 0;
+}
+
+// Restart browser every N renders to avoid memory creep (Chromium bloat) that can OOM after several carousels.
+const RENDERERS_BEFORE_RESET = Number(process.env.RENDERERS_BEFORE_RESET) || 5;
 
 function withRenderLock(fn) {
   const prev = renderQueue;
@@ -181,7 +206,15 @@ async function executeRender(ctx) {
 
 /** Serializes all renders so only one Chrome page is active at a time (avoids OOM on Fly). */
 async function executeRenderWithLock(ctx) {
-  return withRenderLock(() => executeRender(ctx));
+  return withRenderLock(async () => {
+    const result = await executeRender(ctx);
+    renderCount += 1;
+    if (renderCount >= RENDERERS_BEFORE_RESET) {
+      renderCount = 0;
+      await resetBrowser();
+    }
+    return result;
+  });
 }
 
 function normalizeBody(body) {
@@ -478,6 +511,48 @@ app.get("/version", (_, res) => {
 app.get("/warmup", (req, res) => {
   res.json({ ok: true, message: "Browser launch started in background" });
   getBrowser().catch(() => {});
+});
+
+// GET /ready — wait for browser to be up (use at start of n8n flow with retries). Returns 200 when ready, 503 if timeout.
+const READY_TIMEOUT_MS = 60 * 1000;
+app.get("/ready", async (req, res) => {
+  const timeout = setTimeout(() => {
+    if (!res.headersSent) res.status(503).json({ ok: false, error: "Browser not ready within timeout" });
+  }, READY_TIMEOUT_MS);
+  try {
+    await getBrowser();
+    clearTimeout(timeout);
+    if (!res.headersSent) res.json({ ok: true, ready: true });
+  } catch (e) {
+    clearTimeout(timeout);
+    if (!res.headersSent) res.status(503).json({ ok: false, error: e?.message || "Browser failed to launch" });
+  }
+});
+
+// POST /reset — close browser and clear queue. Next request gets a fresh browser (~10–20s). Use at start of flow if "previous run never stopped".
+app.post("/reset", async (_req, res) => {
+  try {
+    await resetBrowser();
+    res.json({ ok: true, message: "Browser closed; next request will launch a fresh one." });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e?.message || "Reset failed" });
+  }
+});
+app.get("/reset", (req, res) => {
+  resetBrowser()
+    .then(() => res.json({ ok: true, message: "Browser closed; next request will launch a fresh one." }))
+    .catch((e) => res.status(500).json({ ok: false, error: e?.message || "Reset failed" }));
+});
+
+// POST /shutdown — exit process so Fly restarts the machine (full cold start). Requires RENDERER_SHUTDOWN_SECRET in env.
+app.post("/shutdown", (req, res) => {
+  const secret = process.env.RENDERER_SHUTDOWN_SECRET;
+  const given = req.headers["x-shutdown-secret"] || req.query?.secret;
+  if (secret && secret !== given) {
+    return res.status(403).json({ ok: false, error: "Forbidden" });
+  }
+  res.json({ ok: true, message: "Shutting down." });
+  setImmediate(() => process.exit(0));
 });
 
 app.get("/templates", (_, res) => {

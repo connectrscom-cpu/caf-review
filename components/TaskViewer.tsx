@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
+import { CarouselSlider } from "@/components/CarouselSlider";
+import type { NormalizedSlide } from "@/lib/carousel-slides";
 import type { ReviewQueueRow } from "@/lib/types";
 
 function getVal(row: ReviewQueueRow, key: string): string {
@@ -9,9 +11,14 @@ function getVal(row: ReviewQueueRow, key: string): string {
 
 export interface TaskViewerProps {
   data: ReviewQueueRow;
+  /** Image URLs per slide (from assets by position). When present with editedSlides, slider shows images. */
+  assetUrls?: string[];
+  /** When provided, show carousel as slider with per-slide editing. */
+  editedSlides?: NormalizedSlide[];
+  onSlidesChange?: (slides: NormalizedSlide[]) => void;
 }
 
-export function TaskViewer({ data }: TaskViewerProps) {
+export function TaskViewer({ data, assetUrls, editedSlides, onSlidesChange }: TaskViewerProps) {
   const previewUrl = getVal(data, "preview_url");
   const videoUrl = getVal(data, "video_url");
   const slidesJson = getVal(data, "generated_slides_json");
@@ -25,6 +32,30 @@ export function TaskViewer({ data }: TaskViewerProps) {
       return null;
     }
   }, [slidesJson]);
+
+  const hasEditableCarousel = editedSlides && editedSlides.length > 0;
+
+  if (hasEditableCarousel) {
+    return (
+      <div className="space-y-4">
+        {previewUrl && (
+          <a
+            href={previewUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-primary hover:underline"
+          >
+            Open full preview in new tab
+          </a>
+        )}
+        <CarouselSlider
+          slides={editedSlides}
+          imageUrls={assetUrls}
+          onSlidesChange={onSlidesChange}
+        />
+      </div>
+    );
+  }
 
   if (previewUrl) {
     return (
@@ -50,7 +81,7 @@ export function TaskViewer({ data }: TaskViewerProps) {
     );
   }
 
-  if (videoUrl) {
+  if (videoUrl && !hasEditableCarousel) {
     return (
       <div className="rounded-lg border bg-muted/30 p-4">
         <p className="mb-2 text-sm font-medium">Video</p>

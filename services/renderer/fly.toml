@@ -11,17 +11,23 @@ primary_region = "ams"
 [http_service]
   internal_port = 3333
   force_https = true
-  auto_stop_machines = true
-  auto_start_machines = true
+  processes = ["app"]
+  # Single machine, never autostop — prevents "excess capacity, autostopping" and cold starts.
   min_machines_running = 1
   max_machines_running = 1
-  processes = ["app"]
+  auto_stop_machines = false
+  auto_start_machines = true
+  # Per-machine concurrency (single object, not array).
+  [http_service.concurrency]
+  type = "requests"
+  hard_limit = 30
+  soft_limit = 10
 
-  # Give Node + Puppeteer time to start before Fly marks machine unreachable
+  # Give Node + Puppeteer time to start; longer timeout so a busy render doesn't fail health
   [[http_service.checks]]
-  grace_period = "45s"
-  interval = "15s"
-  timeout = "10s"
+  grace_period = "60s"
+  interval = "20s"
+  timeout = "15s"
   method = "GET"
   path = "/health"
 

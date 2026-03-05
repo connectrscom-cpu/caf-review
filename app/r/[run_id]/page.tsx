@@ -59,10 +59,13 @@ function RunContent() {
       .catch(() => {});
   }, []);
 
+  const PENDING_REVIEW_STATUSES = ["READY", "IN_REVIEW", "in review", "in_review"];
   const firstReadyTaskId = useMemo(() => {
     if (!data?.items) return null;
-    const ready = data.items.find((row) => (row.review_status ?? "").trim() === "READY");
-    return ready ? (ready.task_id ?? "").trim() : (data.items[0]?.task_id ?? "").trim();
+    const pending = data.items.find((row) =>
+      PENDING_REVIEW_STATUSES.includes((row.review_status ?? "").trim())
+    );
+    return pending ? (pending.task_id ?? "").trim() : (data.items[0]?.task_id ?? "").trim();
   }, [data?.items]);
 
   const reviewNext = () => {
@@ -94,6 +97,7 @@ function RunContent() {
             platformValues={facets.platform ?? []}
             flowTypeValues={facets.flow_type ?? []}
             recommendedRouteValues={facets.recommended_route ?? []}
+            reviewStatusValues={data?.statusCounts ? Object.keys(data.statusCounts) : undefined}
           />
         </div>
         <div className="min-w-0 flex-1">

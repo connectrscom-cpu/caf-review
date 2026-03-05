@@ -21,6 +21,11 @@ export interface DecisionPanelProps {
   onSuccess?: () => void;
   existingDecision?: string;
   existingNotes?: string;
+  /** Overrides to save with decision (final_*_override columns) */
+  finalTitleOverride?: string;
+  finalHookOverride?: string;
+  finalCaptionOverride?: string;
+  finalSlidesJsonOverride?: string;
 }
 
 export function DecisionPanel({
@@ -28,6 +33,10 @@ export function DecisionPanel({
   onSuccess,
   existingDecision,
   existingNotes = "",
+  finalTitleOverride,
+  finalHookOverride,
+  finalCaptionOverride,
+  finalSlidesJsonOverride,
 }: DecisionPanelProps) {
   const [decision, setDecision] = useState<DecisionValue | "">(
     (existingDecision as DecisionValue) || ""
@@ -67,6 +76,10 @@ export function DecisionPanel({
           notes: notes.trim() || undefined,
           rejection_tags: tags,
           validator: validator.trim() || undefined,
+          ...(finalTitleOverride !== undefined && { final_title_override: finalTitleOverride }),
+          ...(finalHookOverride !== undefined && { final_hook_override: finalHookOverride }),
+          ...(finalCaptionOverride !== undefined && { final_caption_override: finalCaptionOverride }),
+          ...(finalSlidesJsonOverride !== undefined && { final_slides_json_override: finalSlidesJsonOverride }),
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -80,7 +93,19 @@ export function DecisionPanel({
     } finally {
       setSubmitting(false);
     }
-  }, [decision, notes, tags, validator, taskId, onSuccess, getToken]);
+  }, [
+    decision,
+    notes,
+    tags,
+    validator,
+    taskId,
+    onSuccess,
+    getToken,
+    finalTitleOverride,
+    finalHookOverride,
+    finalCaptionOverride,
+    finalSlidesJsonOverride,
+  ]);
 
   const toggleTag = (tag: string) => {
     setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));

@@ -86,6 +86,7 @@ function WorkbenchContent() {
             platformValues={facets.platform ?? []}
             flowTypeValues={facets.flow_type ?? []}
             recommendedRouteValues={facets.recommended_route ?? []}
+            reviewStatusValues={data?.statusCounts ? Object.keys(data.statusCounts) : undefined}
           />
         </div>
 

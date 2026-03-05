@@ -24,7 +24,7 @@ const QUERY_KEYS = [
   "limit",
 ] as const;
 
-const REVIEW_STATUS_OPTIONS = ["", "READY", "SUBMITTED", "APPROVED", "NEEDS_EDIT", "REJECTED"];
+const REVIEW_STATUS_FALLBACK = ["", "READY", "IN_REVIEW", "SUBMITTED", "APPROVED", "NEEDS_EDIT", "REJECTED"];
 const DECISION_OPTIONS = ["", "APPROVED", "NEEDS_EDIT", "REJECTED"];
 const GROUP_OPTIONS = ["", "project", "platform", "flow_type", "recommended_route"] as const;
 
@@ -38,6 +38,8 @@ export interface WorkbenchFiltersProps {
   platformValues?: string[];
   flowTypeValues?: string[];
   recommendedRouteValues?: string[];
+  /** Review status values from API statusCounts (enables filtering by any DB status, e.g. "in review"). */
+  reviewStatusValues?: string[];
 }
 
 export function WorkbenchFilters({
@@ -48,7 +50,11 @@ export function WorkbenchFilters({
   platformValues = [],
   flowTypeValues = [],
   recommendedRouteValues = [],
+  reviewStatusValues,
 }: WorkbenchFiltersProps) {
+  const reviewStatusOptions = reviewStatusValues?.length
+    ? ["", ...reviewStatusValues.sort((a, b) => (a === "(empty)" ? 1 : b === "(empty)" ? -1 : a.localeCompare(b)))]
+    : REVIEW_STATUS_FALLBACK;
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -174,7 +180,7 @@ export function WorkbenchFilters({
           value={params.review_status ?? ""}
           onChange={(e) => setParam("review_status", e.target.value)}
         >
-          {REVIEW_STATUS_OPTIONS.map((v) => (
+          {reviewStatusOptions.map((v) => (
             <option key={v} value={v}>{v === "" ? "All" : v}</option>
           ))}
         </select>

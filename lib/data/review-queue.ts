@@ -64,18 +64,30 @@ export async function getReviewQueue(): Promise<ReviewQueueData> {
   const tasks = (tasksData ?? []) as Record<string, unknown>[];
   const taskIds = tasks.map((t) => t.task_id).filter(Boolean) as string[];
 
+  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(/\/$/, "");
+
   let assetsByTask: Record<string, { public_url?: string }> = {};
   if (taskIds.length > 0) {
     const { data: assetsData } = await getSupabase()
       .from("assets")
-      .select("task_id, public_url, asset_type")
+      .select("task_id, public_url, asset_type, bucket, object_path")
       .in("task_id", taskIds)
       .order("position", { ascending: true });
-    const assets = (assetsData ?? []) as { task_id: string; public_url: string | null; asset_type: string | null }[];
+    const assets = (assetsData ?? []) as {
+      task_id: string;
+      public_url: string | null;
+      asset_type: string | null;
+      bucket: string | null;
+      object_path: string | null;
+    }[];
     for (const a of assets) {
       if (!assetsByTask[a.task_id]) assetsByTask[a.task_id] = {};
-      if (!assetsByTask[a.task_id].public_url && a.public_url)
-        assetsByTask[a.task_id].public_url = a.public_url;
+      let url = a.public_url ?? null;
+      if (!url && a.bucket && a.object_path && supabaseUrl) {
+        const path = a.object_path.startsWith("/") ? a.object_path.slice(1) : a.object_path;
+        url = `${supabaseUrl}/storage/v1/object/public/${a.bucket}/${path}`;
+      }
+      if (url && !assetsByTask[a.task_id].public_url) assetsByTask[a.task_id].public_url = url;
     }
   }
 
@@ -114,6 +126,10 @@ export interface DecisionUpdate {
   submit: string;
   submitted_at: string;
   review_status: string;
+  final_title_override?: string | null;
+  final_hook_override?: string | null;
+  final_caption_override?: string | null;
+  final_slides_json_override?: string | null;
 }
 
 export async function updateTaskDecision(
@@ -130,6 +146,10 @@ export async function updateTaskDecision(
       submit: payload.submit,
       submitted_at: payload.submitted_at,
       status: payload.review_status,
+      final_title_override: payload.final_title_override ?? null,
+      final_hook_override: payload.final_hook_override ?? null,
+      final_caption_override: payload.final_caption_override ?? null,
+      final_slides_json_override: payload.final_slides_json_override ?? null,
       updated_at: new Date().toISOString(),
     })
     .eq("task_id", taskId);
