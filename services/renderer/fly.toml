@@ -23,11 +23,11 @@ primary_region = "ams"
   hard_limit = 30
   soft_limit = 10
 
-  # Give Node + Puppeteer time to start; longer timeout so a busy render doesn't fail health
+  # Give Node time to start; if health fails here the app "never starts" from Fly's perspective
   [[http_service.checks]]
-  grace_period = "60s"
-  interval = "20s"
-  timeout = "15s"
+  grace_period = "90s"
+  interval = "15s"
+  timeout = "20s"
   method = "GET"
   path = "/health"
 

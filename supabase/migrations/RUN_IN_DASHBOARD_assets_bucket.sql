@@ -21,3 +21,9 @@ drop policy if exists "Allow delete in assets bucket" on storage.objects;
 create policy "Allow delete in assets bucket"
 on storage.objects for delete to authenticated
 using (bucket_id = 'assets');
+
+-- 3. Allow public read so asset URLs work in browser (preview/video in review console)
+drop policy if exists "Allow public read assets bucket" on storage.objects;
+create policy "Allow public read assets bucket"
+on storage.objects for select to anon
+using (bucket_id = 'assets');

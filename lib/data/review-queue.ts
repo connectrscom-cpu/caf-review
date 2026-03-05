@@ -64,6 +64,7 @@ export async function getReviewQueue(): Promise<ReviewQueueData> {
   const tasks = (tasksData ?? []) as Record<string, unknown>[];
   const taskIds = tasks.map((t) => t.task_id).filter(Boolean) as string[];
 
+  // Required for building asset preview URLs; without it, video_url stays empty and previews show "Missing"
   const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(/\/$/, "");
 
   let assetsByTask: Record<string, { public_url?: string }> = {};

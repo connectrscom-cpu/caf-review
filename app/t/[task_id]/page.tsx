@@ -167,6 +167,7 @@ export default function TaskPage() {
                 assetUrls={assetUrls}
                 editedSlides={editedSlides.length > 0 ? editedSlides : undefined}
                 onSlidesChange={setEditedSlides}
+                fallbackPreviewUrl={assetUrls?.[0]}
               />
             </div>
             <div className="flex flex-col gap-6">

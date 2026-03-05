@@ -17,4 +17,7 @@ create policy "Allow delete in assets bucket"
 on storage.objects for delete to authenticated
 using (bucket_id = 'assets');
 
--- Public read is implied by bucket.public = true; no SELECT policy required for public URLs.
+-- Allow anonymous read so preview/video URLs load in the review console (browser).
+create policy "Allow public read assets bucket"
+on storage.objects for select to anon
+using (bucket_id = 'assets');

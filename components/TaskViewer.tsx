@@ -16,11 +16,13 @@ export interface TaskViewerProps {
   /** When provided, show carousel as slider with per-slide editing. */
   editedSlides?: NormalizedSlide[];
   onSlidesChange?: (slides: NormalizedSlide[]) => void;
+  /** Fallback URL when data has no preview_url/video_url (e.g. first asset from assets API). */
+  fallbackPreviewUrl?: string;
 }
 
-export function TaskViewer({ data, assetUrls, editedSlides, onSlidesChange }: TaskViewerProps) {
+export function TaskViewer({ data, assetUrls, editedSlides, onSlidesChange, fallbackPreviewUrl }: TaskViewerProps) {
   const previewUrl = getVal(data, "preview_url");
-  const videoUrl = getVal(data, "video_url");
+  const videoUrl = getVal(data, "video_url") || fallbackPreviewUrl || "";
   const slidesJson = getVal(data, "generated_slides_json");
 
   const slides = useMemo(() => {
@@ -82,14 +84,31 @@ export function TaskViewer({ data, assetUrls, editedSlides, onSlidesChange }: Ta
   }
 
   if (videoUrl && !hasEditableCarousel) {
+    const isImageUrl = /\.(png|jpg|jpeg|gif|webp)(\?|$)/i.test(videoUrl);
     return (
-      <div className="rounded-lg border bg-muted/30 p-4">
-        <p className="mb-2 text-sm font-medium">Video</p>
-        <video
-          src={videoUrl}
-          controls
-          className="max-h-[70vh] w-full max-w-2xl rounded"
-        />
+      <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
+        <p className="mb-2 text-sm font-medium">Preview</p>
+        {isImageUrl ? (
+          <img
+            src={videoUrl}
+            alt="Carousel slide"
+            className="max-h-[70vh] w-full max-w-2xl rounded object-contain"
+          />
+        ) : (
+          <video
+            src={videoUrl}
+            controls
+            className="max-h-[70vh] w-full max-w-2xl rounded"
+          />
+        )}
+        <a
+          href={videoUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm text-primary hover:underline"
+        >
+          Open preview in new tab
+        </a>
       </div>
     );
   }
