@@ -50,10 +50,10 @@ export function parseSlidesFromJson(json: string | undefined): {
     const slides: NormalizedSlide[] = [];
     let index = 0;
 
-    const cover = raw.cover_slide ?? {};
+    const cover = (raw.cover_slide ?? {}) as { headline?: string; title?: string; body?: string; text?: string };
     const coverHeadline =
-      (raw.cover as string) ?? (cover.headline as string) ?? (raw.intro_title as string) ?? "";
-    const coverBody = (raw.cover_subtitle as string) ?? (cover.body as string) ?? "";
+      (raw.cover as string) ?? cover.headline ?? cover.title ?? (raw.intro_title as string) ?? "";
+    const coverBody = (raw.cover_subtitle as string) ?? cover.body ?? cover.text ?? "";
     slides.push({
       index: index++,
       type: "cover",
@@ -64,11 +64,12 @@ export function parseSlidesFromJson(json: string | undefined): {
 
     const bodySlides = Array.isArray(raw.body_slides) ? raw.body_slides : [];
     for (const s of bodySlides) {
+      const obj = s as { headline?: string; title?: string; body?: string; text?: string };
       slides.push({
         index: index++,
         type: "body",
-        headline: String((s as { headline?: string }).headline ?? ""),
-        body: String((s as { body?: string }).body ?? ""),
+        headline: String(obj.headline ?? obj.title ?? ""),
+        body: String(obj.body ?? obj.text ?? ""),
         handle: "",
       });
     }

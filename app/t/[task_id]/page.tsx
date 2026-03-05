@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { TaskViewer } from "@/components/TaskViewer";
 import { DecisionPanel } from "@/components/DecisionPanel";
-import { CarouselEdits } from "@/components/CarouselEdits";
+import { CarouselEdits, CarouselEditsExport } from "@/components/CarouselEdits";
 import { Button } from "@/components/ui/button";
 import { buildSlidesJson, createSyntheticSlides, parseSlidesFromJson } from "@/lib/carousel-slides";
 import type { NormalizedSlide } from "@/lib/carousel-slides";
@@ -193,6 +193,7 @@ export default function TaskPage() {
                   generated_title: (data.generated_title ?? "").trim(),
                   generated_hook: (data.generated_hook ?? "").trim(),
                 }}
+                exportAtEnd
               />
               <DecisionPanel
                 taskId={task_id}
@@ -203,6 +204,19 @@ export default function TaskPage() {
                 finalHookOverride={editedHook}
                 finalCaptionOverride={editedCaption}
                 finalSlidesJsonOverride={finalSlidesJsonOverride}
+              />
+              <CarouselEditsExport
+                taskId={task_id}
+                runId={runId || undefined}
+                editedSlides={editedSlides}
+                rawPayload={rawPayload ?? null}
+                finalTitleOverride={editedTitle}
+                finalHookOverride={editedHook}
+                generatedCaption={editedCaption}
+                extraFields={{
+                  generated_title: (data.generated_title ?? "").trim(),
+                  generated_hook: (data.generated_hook ?? "").trim(),
+                }}
               />
             </div>
           </div>

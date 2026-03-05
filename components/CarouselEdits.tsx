@@ -24,6 +24,8 @@ export interface CarouselEditsProps {
   onCaptionChange: (value: string) => void;
   /** Other task fields to include in export. Keys and current values. */
   extraFields?: Record<string, string>;
+  /** When true, do not show Export button here (use separate block at end of review). */
+  exportAtEnd?: boolean;
 }
 
 /**
@@ -42,6 +44,7 @@ export function CarouselEdits({
   generatedCaption,
   onCaptionChange,
   extraFields = {},
+  exportAtEnd = false,
 }: CarouselEditsProps) {
   const exportEdited = useCallback(() => {
     const slidesPayload = buildSlidesJson(editedSlides, rawPayload);
@@ -102,11 +105,72 @@ export function CarouselEdits({
         />
       </div>
 
+      {!exportAtEnd && (
+        <>
+          <Button type="button" variant="outline" onClick={exportEdited} className="w-full">
+            Export edited JSON (for rework flow)
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Downloads a JSON file with edited slides, caption, and task id for the rework pipeline.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Export-only block to place at the end of the review (after Decision). */
+export interface CarouselEditsExportProps {
+  taskId: string;
+  runId?: string;
+  editedSlides: NormalizedSlide[];
+  rawPayload: CarouselSlidesPayload | null;
+  finalTitleOverride: string;
+  finalHookOverride: string;
+  generatedCaption: string;
+  extraFields?: Record<string, string>;
+}
+
+export function CarouselEditsExport({
+  taskId,
+  runId,
+  editedSlides,
+  rawPayload,
+  finalTitleOverride,
+  finalHookOverride,
+  generatedCaption,
+  extraFields = {},
+}: CarouselEditsExportProps) {
+  const exportEdited = useCallback(() => {
+    const slidesPayload = buildSlidesJson(editedSlides, rawPayload);
+    const payload = {
+      task_id: taskId,
+      run_id: runId || undefined,
+      final_title_override: finalTitleOverride.trim() || undefined,
+      final_hook_override: finalHookOverride.trim() || undefined,
+      final_caption_override: generatedCaption.trim() || undefined,
+      final_slides_json_override: slidesPayload,
+      ...extraFields,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `rework-${taskId}-edited.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [taskId, runId, editedSlides, rawPayload, finalTitleOverride, finalHookOverride, generatedCaption, extraFields]);
+
+  return (
+    <div className="space-y-2 rounded-lg border bg-card p-4 text-card-foreground">
+      <h3 className="text-sm font-semibold">End of review</h3>
       <Button type="button" variant="outline" onClick={exportEdited} className="w-full">
         Export edited JSON (for rework flow)
       </Button>
       <p className="text-xs text-muted-foreground">
-        Downloads a JSON file with edited slides, caption, and task id for the rework pipeline.
+        Download JSON with edited slides, caption, and task id for the rework pipeline.
       </p>
     </div>
   );

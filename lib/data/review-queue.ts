@@ -67,12 +67,22 @@ export async function getReviewQueue(): Promise<ReviewQueueData> {
   // Required for building asset preview URLs; without it, video_url stays empty and previews show "Missing"
   const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(/\/$/, "");
 
+  /** Normalize task_id for fallback match (e.g. SNS_..._row0008_v1 -> SNS_..._row0008). */
+  function baseTaskId(id: string): string {
+    const s = String(id).trim();
+    const m = s.match(/^(.+)_v\d+$/);
+    return m ? m[1] : s;
+  }
+
   let assetsByTask: Record<string, { public_url?: string }> = {};
+  let assetsByBase: Record<string, { public_url?: string }> = {};
   if (taskIds.length > 0) {
+    const baseIds = [...new Set(taskIds.map((id) => baseTaskId(id)))];
+    const allIds = [...new Set([...taskIds, ...baseIds])];
     const { data: assetsData } = await getSupabase()
       .from("assets")
       .select("task_id, public_url, asset_type, bucket, object_path")
-      .in("task_id", taskIds)
+      .in("task_id", allIds)
       .order("position", { ascending: true });
     const assets = (assetsData ?? []) as {
       task_id: string;
@@ -82,20 +92,26 @@ export async function getReviewQueue(): Promise<ReviewQueueData> {
       object_path: string | null;
     }[];
     for (const a of assets) {
-      if (!assetsByTask[a.task_id]) assetsByTask[a.task_id] = {};
       let url = a.public_url ?? null;
       if (!url && a.bucket && a.object_path && supabaseUrl) {
         const path = a.object_path.startsWith("/") ? a.object_path.slice(1) : a.object_path;
         url = `${supabaseUrl}/storage/v1/object/public/${a.bucket}/${path}`;
       }
-      if (url && !assetsByTask[a.task_id].public_url) assetsByTask[a.task_id].public_url = url;
+      if (url) {
+        if (!assetsByTask[a.task_id]) assetsByTask[a.task_id] = {};
+        if (!assetsByTask[a.task_id].public_url) assetsByTask[a.task_id].public_url = url;
+        const base = baseTaskId(a.task_id);
+        if (!assetsByBase[base]) assetsByBase[base] = {};
+        if (!assetsByBase[base].public_url) assetsByBase[base].public_url = url;
+      }
     }
   }
 
   const rows: ReviewQueueRow[] = tasks.map((t) => {
     const row = rowToReviewRow(t);
     if (row.status != null) row.review_status = row.status;
-    const asset = assetsByTask[String(t.task_id)];
+    const tid = String(t.task_id);
+    const asset = assetsByTask[tid] ?? assetsByBase[baseTaskId(tid)];
     if (asset?.public_url && !row.video_url) row.video_url = asset.public_url;
     return row;
   });

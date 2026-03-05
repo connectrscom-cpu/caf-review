@@ -28,9 +28,27 @@ function TaskRow({ row }: { row: ReviewQueueRow }) {
   const reviewStatus = getVal(row, "review_status");
   const decision = getVal(row, "decision");
   const title = getVal(row, "generated_title") || taskId;
+  const previewUrl = getVal(row, "preview_url") || getVal(row, "video_url");
 
   return (
     <tr className="border-b border-border hover:bg-muted/50">
+      <td className="p-2">
+        {previewUrl ? (
+          <Link
+            href={`/t/${encodeURIComponent(taskId)}`}
+            className="block w-14 h-14 rounded border bg-muted overflow-hidden shrink-0 focus:outline-none focus:ring-2 focus:ring-ring"
+            title="Open task"
+          >
+            <img
+              src={previewUrl}
+              alt=""
+              className="w-full h-full object-cover"
+            />
+          </Link>
+        ) : (
+          <span className="inline-flex w-14 h-14 rounded border border-dashed items-center justify-center text-xs text-muted-foreground">—</span>
+        )}
+      </td>
       <td className="p-2 text-sm">
         <Link
           href={`/t/${encodeURIComponent(taskId)}`}
@@ -100,7 +118,7 @@ function TableBody({ items, groupBy }: { items: ReviewQueueRow[]; groupBy: Group
       {sortedGroups.map(([groupKey, rows]) => (
         <React.Fragment key={groupKey}>
           <tr className="bg-muted/70 font-medium">
-            <td colSpan={10} className="p-2 text-sm">
+            <td colSpan={11} className="p-2 text-sm">
               {groupBy}: {groupKey}
             </td>
           </tr>
@@ -145,6 +163,7 @@ export function TaskTable({
         <table className="w-full text-left">
           <thead className="bg-muted/50">
             <tr>
+              <th className="p-2 text-xs font-medium w-[3.5rem]">Preview</th>
               <th className="p-2 text-xs font-medium">Task ID</th>
               <th className="p-2 text-xs font-medium">Run</th>
               <th className="p-2 text-xs font-medium">Platform</th>

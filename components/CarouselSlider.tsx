@@ -26,14 +26,17 @@ export function CarouselSlider({
 }: CarouselSliderProps) {
   const [slides, setSlides] = useState<NormalizedSlide[]>(initialSlides);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
 
   useEffect(() => {
     setSlides(initialSlides);
     setCurrentIndex((i) => Math.min(i, Math.max(0, initialSlides.length - 1)));
+    setSavedAt(null);
   }, [initialSlides]);
 
   const updateSlide = useCallback(
     (index: number, patch: Partial<Pick<NormalizedSlide, "headline" | "body" | "handle">>) => {
+      setSavedAt(null);
       setSlides((prev) => {
         const next = prev.map((s, i) =>
           i === index ? { ...s, ...patch } : s
@@ -44,6 +47,11 @@ export function CarouselSlider({
     },
     [onSlidesChange]
   );
+
+  const handleSaveSlide = useCallback(() => {
+    onSlidesChange?.(slides);
+    setSavedAt(currentIndex);
+  }, [currentIndex, onSlidesChange, slides]);
 
   const slide = slides[currentIndex];
   const imageUrl = imageUrls[currentIndex];
@@ -147,6 +155,16 @@ export function CarouselSlider({
             </div>
           </>
         )}
+        <div className="pt-2">
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleSaveSlide}
+            disabled={savedAt === currentIndex}
+          >
+            {savedAt === currentIndex ? "Saved" : "Save slide"}
+          </Button>
+        </div>
       </div>
 
       {/* Prev / Next + dots */}
