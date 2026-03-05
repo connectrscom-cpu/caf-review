@@ -80,13 +80,25 @@ async function getBrowser() {
   }
 }
 
-function compileTemplate(templateName) {
+async function getTemplateSource(templateName) {
+  const apiUrl = process.env.CAF_TEMPLATE_API_URL;
+  if (apiUrl) {
+    try {
+      const base = apiUrl.replace(/\/$/, "");
+      const res = await fetch(`${base}/api/templates/${encodeURIComponent(templateName)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.source) return data.source;
+      }
+    } catch (_) {
+      /* fallback to disk */
+    }
+  }
   const filePath = path.join(TEMPLATES_DIR, templateName);
   if (!fs.existsSync(filePath)) {
     throw new Error(`Template not found: ${templateName}`);
   }
-  const src = fs.readFileSync(filePath, "utf8");
-  return Handlebars.compile(src);
+  return fs.readFileSync(filePath, "utf8");
 }
 
 async function executeRender(ctx) {
@@ -118,7 +130,8 @@ async function executeRender(ctx) {
     const runId = `${safeJobId}_${Date.now()}`;
     outPath = path.join(OUTPUT_DIR, `${runId}_${slideFileName}`);
   }
-  const tpl = compileTemplate(template);
+  const src = await getTemplateSource(template);
+  const tpl = Handlebars.compile(src);
   const html = tpl(templateData);
   const browser = await getBrowser();
   const page = await browser.newPage();

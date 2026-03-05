@@ -87,6 +87,11 @@ export default function PlaygroundPage() {
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
   const designDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [backendTemplateNames, setBackendTemplateNames] = useState<string[]>([]);
+  const [editTemplateName, setEditTemplateName] = useState("");
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "ok" | "error">("idle");
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     fetch("/api/renderer/templates")
@@ -104,8 +109,29 @@ export default function PlaygroundPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    fetch("/api/templates")
+      .then((r) => r.json())
+      .then((data: { ok?: boolean; names?: string[] }) => {
+        if (!cancelled && Array.isArray(data.names)) setBackendTemplateNames(data.names);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (templates.length && !selectedTemplate) setSelectedTemplate(templates[0]);
   }, [templates, selectedTemplate]);
+
+  const allTemplatesForDesign = [...new Set([...templates, ...backendTemplateNames])].sort();
+
+  useEffect(() => {
+    if (allTemplatesForDesign.length && selectedTemplate && !allTemplatesForDesign.includes(selectedTemplate)) {
+      setSelectedTemplate(allTemplatesForDesign[0]);
+    }
+  }, [allTemplatesForDesign, selectedTemplate]);
 
   // Live preview for Design tab: debounced Handlebars compile + iframe inject
   useEffect(() => {
@@ -171,25 +197,78 @@ export default function PlaygroundPage() {
     }
   }, [selectedTemplate, jsonInput]);
 
-  const loadSelectedIntoDesign = useCallback(async () => {
-    if (!selectedTemplate) return;
-    setActiveTab("design");
+  const loadTemplateForEdit = useCallback(async (name: string) => {
+    if (!name) return;
     setDesignLoadError(null);
     try {
-      const res = await fetch(`/api/renderer/template-source?name=${encodeURIComponent(selectedTemplate)}`);
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; source?: string };
-      if (!res.ok || !json.ok || !json.source) {
-        setDesignLoadError(json.error || res.statusText || "Failed to load template");
+      let res = await fetch(`/api/renderer/template-source?name=${encodeURIComponent(name)}`);
+      let json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; source?: string };
+      if (!res.ok || !json?.source) {
+        res = await fetch(`/api/templates/${encodeURIComponent(name)}`);
+        json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; source?: string };
+      }
+      if (!res.ok || !json?.source) {
+        setDesignLoadError(json?.error || res.statusText || "Failed to load template");
         return;
       }
-      const baseName = selectedTemplate.replace(/\.hbs$/i, "");
+      const baseName = name.replace(/\.hbs$/i, "");
       setTemplateName(baseName);
       setTemplateHtml(json.source);
       setDesignJson(DEFAULT_JSON);
     } catch (e) {
       setDesignLoadError(e instanceof Error ? e.message : "Failed to load template");
     }
-  }, [selectedTemplate]);
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== "design" || !editTemplateName) return;
+    loadTemplateForEdit(editTemplateName);
+  }, [activeTab, editTemplateName, loadTemplateForEdit]);
+
+  const saveToBackend = useCallback(
+    async (nameToSave: string) => {
+      const finalName = nameToSave.trim().replace(/[^a-zA-Z0-9_.-]/g, "_") || "template";
+      const nameWithExt = finalName.endsWith(".hbs") ? finalName : `${finalName}.hbs`;
+      setSaveStatus("saving");
+      setSaveMessage(null);
+      try {
+        const res = await fetch("/api/templates", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: nameWithExt, source: templateHtml }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; name?: string };
+        if (!res.ok || !data.ok) {
+          setSaveStatus("error");
+          setSaveMessage(data.error || res.statusText || "Save failed");
+          return;
+        }
+        setSaveStatus("ok");
+        setSaveMessage(`Saved as ${data.name ?? nameWithExt}`);
+        setTemplateName(finalName.replace(/\.hbs$/i, ""));
+        setBackendTemplateNames((prev) => (prev.includes(nameWithExt) ? prev : [...prev, nameWithExt].sort()));
+        setTimeout(() => {
+          setSaveStatus("idle");
+          setSaveMessage(null);
+        }, 3000);
+      } catch (e) {
+        setSaveStatus("error");
+        setSaveMessage(e instanceof Error ? e.message : "Save failed");
+      }
+    },
+    [templateHtml]
+  );
+
+  const handleSaveOverwrite = useCallback(() => {
+    const name = templateName.trim() || editTemplateName.replace(/\.hbs$/i, "") || "template";
+    saveToBackend(name);
+  }, [templateName, editTemplateName, saveToBackend]);
+
+  const handleSaveAsNew = useCallback(() => {
+    const newName = window.prompt("Save as new template (name):", templateName.trim() || "my_carousel");
+    if (newName == null || !newName.trim()) return;
+    saveToBackend(newName.trim());
+  }, [templateName, saveToBackend]);
 
   const runPreviewAll = useCallback(async () => {
     if (!selectedTemplate) return;
@@ -271,17 +350,6 @@ export default function PlaygroundPage() {
     e.target.value = "";
   }, []);
 
-  const saveAsTemplate = useCallback(() => {
-    const name = templateName.trim().replace(/[^a-zA-Z0-9_-]/g, "_") || "template";
-    const filename = name.endsWith(".hbs") ? name : `${name}.hbs`;
-    const blob = new Blob([templateHtml], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [templateName, templateHtml]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -303,14 +371,6 @@ export default function PlaygroundPage() {
           >
             Design
           </button>
-          <button
-            type="button"
-            onClick={loadSelectedIntoDesign}
-            disabled={!selectedTemplate}
-            className="rounded-md px-3 py-1.5 text-sm font-medium bg-card text-card-foreground border border-border hover:bg-card/80 disabled:opacity-50"
-          >
-            Edit selected template
-          </button>
         </nav>
       </header>
 
@@ -324,8 +384,8 @@ export default function PlaygroundPage() {
                 value={selectedTemplate}
                 onChange={(e) => setSelectedTemplate(e.target.value)}
               >
-                {templates.length === 0 && <option value="">Loading…</option>}
-                {templates.map((t) => (
+                {allTemplatesForDesign.length === 0 && <option value="">Loading…</option>}
+                {allTemplatesForDesign.map((t) => (
                   <option key={t} value={t}>
                     {t}
                   </option>
@@ -399,6 +459,30 @@ export default function PlaygroundPage() {
         <main className="grid gap-6 p-6 lg:grid-cols-2">
           <div className="space-y-4">
             <div>
+              <label className="mb-2 block text-sm font-medium text-muted-foreground">Edit template</label>
+              <select
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={editTemplateName}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setEditTemplateName(v);
+                  if (!v) {
+                    setTemplateHtml(STARTER_TEMPLATE);
+                    setTemplateName("my_carousel");
+                    setDesignLoadError(null);
+                  }
+                }}
+              >
+                <option value="">New template</option>
+                {allTemplatesForDesign.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">Pick one to edit, or start from New template.</p>
+            </div>
+            <div>
               <label className="mb-2 block text-sm font-medium text-muted-foreground">Template name (for save)</label>
               <input
                 type="text"
@@ -445,16 +529,27 @@ export default function PlaygroundPage() {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={saveAsTemplate}
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                onClick={handleSaveOverwrite}
+                disabled={saveStatus === "saving"}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
-                Save as template (.hbs)
+                {saveStatus === "saving" ? "Saving…" : "Save (overwrite)"}
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAsNew}
+                disabled={saveStatus === "saving"}
+                className="rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
+              >
+                Save as new
               </button>
             </div>
+            {saveStatus === "ok" && saveMessage && <p className="text-sm text-green-600 dark:text-green-400">{saveMessage}</p>}
+            {saveStatus === "error" && saveMessage && <p className="text-sm text-destructive">{saveMessage}</p>}
             {designPreviewError && <p className="text-sm text-destructive">{designPreviewError}</p>}
             {designLoadError && <p className="text-sm text-destructive">{designLoadError}</p>}
             <p className="text-xs text-muted-foreground">
-              Save downloads the file. Add it to <code className="rounded bg-muted px-1">services/renderer/templates/</code> and redeploy the renderer to use it.
+              Templates are saved in the CAF backend. Set <code className="rounded bg-muted px-1">CAF_TEMPLATE_API_URL</code> on the renderer to your CAF app URL so it uses saved templates.
             </p>
           </div>
 
@@ -462,16 +557,31 @@ export default function PlaygroundPage() {
             <h2 className="text-sm font-medium text-muted-foreground">Live preview</h2>
             <div className="rounded-lg border bg-card overflow-hidden">
               <div className="border-b bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-                Updates as you type (same data as Preview tab). Final PNGs come from the renderer.
+                Updates as you type. Scaled for layout; final PNGs come from the renderer.
               </div>
-              <div className="overflow-auto max-h-[75vh] bg-muted/20 p-4">
-                <iframe
-                  ref={previewIframeRef}
-                  title="Design preview"
-                  className="w-full min-h-[600px] border-0 bg-white rounded"
-                  sandbox="allow-same-origin"
-                  style={{ width: "1080px", minHeight: "800px" }}
-                />
+              <div className="overflow-auto max-h-[520px] bg-muted/20 p-4">
+                <div
+                  className="relative rounded border border-border bg-white overflow-hidden"
+                  style={{ width: "378px", height: "473px" }}
+                >
+                  <div
+                    className="absolute left-0 top-0"
+                    style={{
+                      width: "1080px",
+                      height: "1350px",
+                      transform: "scale(0.35)",
+                      transformOrigin: "top left",
+                    }}
+                  >
+                    <iframe
+                      ref={previewIframeRef}
+                      title="Design preview"
+                      className="border-0 bg-white block"
+                      sandbox="allow-same-origin"
+                      style={{ width: "1080px", height: "1350px" }}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
