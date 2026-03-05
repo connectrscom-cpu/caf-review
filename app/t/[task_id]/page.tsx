@@ -7,7 +7,7 @@ import { TaskViewer } from "@/components/TaskViewer";
 import { DecisionPanel } from "@/components/DecisionPanel";
 import { CarouselEdits } from "@/components/CarouselEdits";
 import { Button } from "@/components/ui/button";
-import { buildSlidesJson, parseSlidesFromJson } from "@/lib/carousel-slides";
+import { buildSlidesJson, createSyntheticSlides, parseSlidesFromJson } from "@/lib/carousel-slides";
 import type { NormalizedSlide } from "@/lib/carousel-slides";
 import type { ReviewQueueRow } from "@/lib/types";
 
@@ -45,9 +45,16 @@ export default function TaskPage() {
   }, [task_id]);
 
   useEffect(() => {
-    if (initialSlides.length === 0 || editedSlides.length > 0) return;
-    setEditedSlides(initialSlides);
-  }, [initialSlides, editedSlides.length]);
+    if (initialSlides.length > 0) {
+      setEditedSlides((prev) => (prev.length !== initialSlides.length ? initialSlides : prev));
+      return;
+    }
+    if (assetUrls.length > 0) {
+      setEditedSlides((prev) =>
+        prev.length !== assetUrls.length ? createSyntheticSlides(assetUrls.length) : prev
+      );
+    }
+  }, [initialSlides, initialSlides.length, assetUrls.length]);
 
   useEffect(() => {
     if (!data) return;

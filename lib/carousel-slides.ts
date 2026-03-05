@@ -23,6 +23,20 @@ export interface CarouselSlidesPayload {
 }
 
 /**
+ * Create placeholder slides (one per asset) when task has assets but no generated_slides_json.
+ * Enables the slider to show all slide images with prev/next and dots.
+ */
+export function createSyntheticSlides(count: number): NormalizedSlide[] {
+  return Array.from({ length: count }, (_, i) => ({
+    index: i,
+    type: "body" as const,
+    headline: "",
+    body: "",
+    handle: "",
+  }));
+}
+
+/**
  * Parse generated_slides_json into a flat list of normalized slides (cover, body, cta)
  * so we can show one per "flashcard" and edit text.
  */

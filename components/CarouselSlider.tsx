@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +26,11 @@ export function CarouselSlider({
 }: CarouselSliderProps) {
   const [slides, setSlides] = useState<NormalizedSlide[]>(initialSlides);
   const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    setSlides(initialSlides);
+    setCurrentIndex((i) => Math.min(i, Math.max(0, initialSlides.length - 1)));
+  }, [initialSlides]);
 
   const updateSlide = useCallback(
     (index: number, patch: Partial<Pick<NormalizedSlide, "headline" | "body" | "handle">>) => {
