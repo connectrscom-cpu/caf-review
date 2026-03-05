@@ -125,7 +125,7 @@ export default function PlaygroundPage() {
     if (templates.length && !selectedTemplate) setSelectedTemplate(templates[0]);
   }, [templates, selectedTemplate]);
 
-  const allTemplatesForDesign = [...new Set([...templates, ...backendTemplateNames])].sort();
+  const allTemplatesForDesign = Array.from(new Set([...templates, ...backendTemplateNames])).sort();
 
   useEffect(() => {
     if (allTemplatesForDesign.length && selectedTemplate && !allTemplatesForDesign.includes(selectedTemplate)) {
