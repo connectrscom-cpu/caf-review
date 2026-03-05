@@ -56,7 +56,16 @@ async function getBrowser() {
   if (sharedBrowser && sharedBrowser.connected) return sharedBrowser;
   if (browserLaunchPromise) return browserLaunchPromise;
   browserLaunchPromise = puppeteer.launch({
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--disable-software-rasterizer",
+      "--disable-extensions",
+      "--mute-audio",
+      "--no-first-run",
+    ],
   });
   try {
     sharedBrowser = await browserLaunchPromise;
