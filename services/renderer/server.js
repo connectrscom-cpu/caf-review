@@ -52,6 +52,20 @@ if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 let sharedBrowser = null;
 let browserLaunchPromise = null;
 
+// Only one render at a time to avoid OOM from multiple Chrome pages (e.g. n8n sending 15 parallel /render-binary).
+let renderQueue = Promise.resolve();
+
+function withRenderLock(fn) {
+  const prev = renderQueue;
+  let release;
+  renderQueue = new Promise((r) => {
+    release = r;
+  });
+  return prev.then(() => fn()).finally(() => release());
+}
+
+const RENDER_TIMEOUT_MS = 90 * 1000; // 90s per slide; kill page if exceeded
+
 async function getBrowser() {
   if (sharedBrowser && sharedBrowser.connected) return sharedBrowser;
   if (browserLaunchPromise) return browserLaunchPromise;
@@ -60,6 +74,7 @@ async function getBrowser() {
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
+      "--no-zygote",
       "--disable-gpu",
       "--disable-software-rasterizer",
       "--disable-extensions",
@@ -136,24 +151,37 @@ async function executeRender(ctx) {
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
-    page.setDefaultNavigationTimeout(90000);
-    page.setDefaultTimeout(60000);
+    page.setDefaultNavigationTimeout(RENDER_TIMEOUT_MS);
+    page.setDefaultTimeout(RENDER_TIMEOUT_MS);
     await page.setViewport({ width: 1080, height: 1350, deviceScaleFactor: 2 });
-    await page.setContent(html, { waitUntil: "load", timeout: 90000 });
-    const slideHandles = await page.$$(".slide");
-    if (!slideHandles.length) throw new Error("No .slide elements found.");
-    const i0 = slideIndex1 - 1;
-    if (i0 >= slideHandles.length) {
-      throw new Error(
-        `slide_index ${slideIndex1} out of range (total slides: ${slideHandles.length}). Request had body_slides count: ${bodySlidesCount}.`
-      );
-    }
-    await slideHandles[i0].screenshot({ path: outPath });
-    const relativePath = path.relative(OUTPUT_DIR, outPath).replace(/\\/g, "/");
-    return { outPath, relativePath, totalSlides: slideHandles.length };
+
+    const work = (async () => {
+      await page.setContent(html, { waitUntil: "load", timeout: RENDER_TIMEOUT_MS });
+      const slideHandles = await page.$$(".slide");
+      if (!slideHandles.length) throw new Error("No .slide elements found.");
+      const i0 = slideIndex1 - 1;
+      if (i0 >= slideHandles.length) {
+        throw new Error(
+          `slide_index ${slideIndex1} out of range (total slides: ${slideHandles.length}). Request had body_slides count: ${bodySlidesCount}.`
+        );
+      }
+      await slideHandles[i0].screenshot({ path: outPath });
+      const relativePath = path.relative(OUTPUT_DIR, outPath).replace(/\\/g, "/");
+      return { outPath, relativePath, totalSlides: slideHandles.length };
+    })();
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Render timeout after ${RENDER_TIMEOUT_MS / 1000}s`)), RENDER_TIMEOUT_MS)
+    );
+    return await Promise.race([work, timeoutPromise]);
   } finally {
     await page.close().catch(() => {});
   }
+}
+
+/** Serializes all renders so only one Chrome page is active at a time (avoids OOM on Fly). */
+async function executeRenderWithLock(ctx) {
+  return withRenderLock(() => executeRender(ctx));
 }
 
 function normalizeBody(body) {
@@ -206,15 +234,23 @@ app.post("/render", async (req, res) => {
   let body = normalizeBody(req.body);
   if (body.error) return res.status(400).json({ ok: false, error: body.error });
 
-  const template = body?.template ?? body?.["template"];
+  const data = (body && body.data) != null ? body.data : {};
+  // Template: top-level or from data.render (n8n often sends html_template_name / template_key inside data.render)
+  let template = body?.template ?? body?.["template"] ?? null;
+  if (!template && data?.render && typeof data.render === "object") {
+    template = data.render.html_template_name ?? null;
+    if (!template && data.render.template_key) {
+      const key = String(data.render.template_key).toLowerCase();
+      template = key.endsWith(".hbs") ? key : `${key}.hbs`;
+    }
+  }
   const job_id = body?.job_id ?? body?.["job.id"];
   const slide_index = body?.slide_index ?? body?.["slide_index"];
   const run_id = body?.run_id ?? body?.["run.id"];
   const task_id = body?.task_id ?? body?.["task.id"];
-  const data = (body && body.data) != null ? body.data : {};
 
   if (!template) {
-    return res.status(400).json({ ok: false, error: "Missing template" });
+    return res.status(400).json({ ok: false, error: "Missing template (set body.template or data.render.html_template_name)" });
   }
 
   let templateData = normalizeTemplateData(body, data);
@@ -289,7 +325,7 @@ app.post("/render", async (req, res) => {
   if (asyncMode) {
     const requestId = randomUUID();
     asyncJobs.set(requestId, { status: "pending", at: Date.now() });
-    executeRender(ctx)
+    executeRenderWithLock(ctx)
       .then(({ relativePath, totalSlides }) => {
         asyncJobs.set(requestId, {
           status: "done",
@@ -313,7 +349,7 @@ app.post("/render", async (req, res) => {
   }
 
   try {
-    const { outPath, relativePath, totalSlides } = await executeRender(ctx);
+    const { outPath, relativePath, totalSlides } = await executeRenderWithLock(ctx);
     const payload = {
       ok: true,
       slide_index: slideIndex1,
@@ -334,12 +370,15 @@ app.post("/render-binary", async (req, res) => {
   let body = normalizeBody(req.body);
   if (body.error) return res.status(400).json({ ok: false, error: body.error });
 
-  const template = body?.template ?? body?.["template"];
+  const data = (body && body.data) != null ? body.data : {};
+  let template = body?.template ?? body?.["template"] ?? null;
+  if (!template && data?.render && typeof data.render === "object") {
+    template = data.render.html_template_name ?? (data.render.template_key ? `${String(data.render.template_key).toLowerCase().replace(/\.hbs$/i, "")}.hbs` : null) ?? null;
+  }
   const job_id = body?.job_id ?? body?.["job.id"];
   const slide_index = body?.slide_index ?? body?.["slide_index"];
   const run_id = body?.run_id ?? body?.["run.id"];
   const task_id = body?.task_id ?? body?.["task.id"];
-  const data = (body && body.data) != null ? body.data : {};
 
   if (!template) return res.status(400).json({ ok: false, error: "Missing template" });
 
@@ -398,7 +437,7 @@ app.post("/render-binary", async (req, res) => {
   };
 
   try {
-    const { outPath } = await executeRender(ctx);
+    const { outPath } = await executeRenderWithLock(ctx);
     const buffer = fs.readFileSync(outPath);
     res.setHeader("Content-Type", "image/png");
     res.send(buffer);
@@ -474,8 +513,11 @@ app.post("/preview-template", async (req, res) => {
   let body = normalizeBody(req.body);
   if (body.error) return res.status(400).json({ ok: false, error: body.error });
 
-  const template = body?.template ?? body?.["template"];
   const data = (body && body.data) != null ? body.data : {};
+  let template = body?.template ?? body?.["template"] ?? null;
+  if (!template && data?.render && typeof data.render === "object") {
+    template = data.render.html_template_name ?? (data.render.template_key ? `${String(data.render.template_key).toLowerCase().replace(/\.hbs$/i, "")}.hbs` : null) ?? null;
+  }
   if (!template) return res.status(400).json({ ok: false, error: "Missing template" });
 
   let templateData = normalizeTemplateData(body, data);
@@ -498,7 +540,7 @@ app.post("/preview-template", async (req, res) => {
     hasTaskId: false,
   };
   try {
-    const { relativePath } = await executeRender(ctx);
+    const { relativePath } = await executeRenderWithLock(ctx);
     res.json({ ok: true, result_url: `/output/${relativePath}` });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -510,11 +552,14 @@ app.post("/render-carousel", async (req, res) => {
   let body = normalizeBody(req.body);
   if (body.error) return res.status(400).json({ ok: false, error: body.error });
 
-  const template = body?.template ?? body?.["template"];
+  const data = (body && body.data) != null ? body.data : {};
+  let template = body?.template ?? body?.["template"] ?? null;
+  if (!template && data?.render && typeof data.render === "object") {
+    template = data.render.html_template_name ?? (data.render.template_key ? `${String(data.render.template_key).toLowerCase().replace(/\.hbs$/i, "")}.hbs` : null) ?? null;
+  }
   const job_id = body?.job_id ?? body?.["job.id"];
   const run_id = body?.run_id ?? body?.["run.id"];
   const task_id = body?.task_id ?? body?.["task.id"];
-  const data = (body && body.data) != null ? body.data : {};
   if (!template) return res.status(400).json({ ok: false, error: "Missing template" });
 
   let templateData = normalizeTemplateData(body, data);
@@ -544,7 +589,7 @@ app.post("/render-carousel", async (req, res) => {
         hasRunId,
         hasTaskId,
       };
-      const { relativePath } = await executeRender(ctx);
+      const { relativePath } = await executeRenderWithLock(ctx);
       slides.push({ slide_index: slideIndex1, result_url: `/output/${relativePath}` });
     }
     res.json({ ok: true, slides });
@@ -560,8 +605,16 @@ setInterval(() => {
   }
 }, 10 * 60 * 1000);
 
+// Global error handler: ensures we always send a response so proxies don't return 502 with empty body
+app.use((err, _req, res, _next) => {
+  if (res.headersSent) return;
+  res.status(500).json({ ok: false, error: err?.message || String(err) });
+});
+
 const PORT = process.env.PORT || 3333;
-const server = app.listen(PORT, () => console.log(`CAF Renderer running on http://localhost:${PORT} (version ${RENDERER_VERSION})`));
+const server = app.listen(PORT, "0.0.0.0", () =>
+  console.log(`CAF Renderer running on http://0.0.0.0:${PORT} (version ${RENDERER_VERSION})`)
+);
 server.timeout = 10 * 60 * 1000;
 server.keepAliveTimeout = 10 * 60 * 1000;
 server.headersTimeout = 10 * 60 * 1000;

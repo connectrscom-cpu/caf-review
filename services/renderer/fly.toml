@@ -2,7 +2,8 @@ app = "caf-renderer"
 primary_region = "ams"
 
 [vm]
-  memory = "1gb"
+  # Puppeteer/Chromium need more than 1GB under load; OOM causes SIGKILL and 502s
+  memory = "2gb"
 
 [build]
   dockerfile = "Dockerfile"
@@ -12,6 +13,15 @@ primary_region = "ams"
   force_https = true
   auto_stop_machines = true
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
+  max_machines_running = 1
   processes = ["app"]
+
+  # Give Node + Puppeteer time to start before Fly marks machine unreachable
+  [[http_service.checks]]
+  grace_period = "45s"
+  interval = "15s"
+  timeout = "10s"
+  method = "GET"
+  path = "/health"
 
