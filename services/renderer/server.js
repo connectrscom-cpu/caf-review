@@ -69,6 +69,7 @@ let renderCount = 0;
 /** Close browser and clear queue so next request gets a fresh process. Call before a new flow run if you want a clean slate. */
 async function resetBrowser() {
   if (sharedBrowser && sharedBrowser.connected) {
+    console.log("[renderer] resetBrowser: closing shared browser (memory cleanup)");
     await sharedBrowser.close().catch(() => {});
   }
   sharedBrowser = null;
@@ -78,7 +79,8 @@ async function resetBrowser() {
 }
 
 // Restart browser every N renders to avoid memory creep (Chromium bloat) that can OOM after several carousels.
-const RENDERERS_BEFORE_RESET = Number(process.env.RENDERERS_BEFORE_RESET) || 5;
+// Default 12 so an 11-slide carousel completes in one browser; reset mid-carousel (e.g. 5) caused "wall at slide 6" (cold relaunch).
+const RENDERERS_BEFORE_RESET = Number(process.env.RENDERERS_BEFORE_RESET) || 12;
 
 function withRenderLock(fn) {
   const prev = renderQueue;
@@ -94,6 +96,7 @@ const RENDER_TIMEOUT_MS = 90 * 1000; // 90s per slide; kill page if exceeded
 async function getBrowser() {
   if (sharedBrowser && sharedBrowser.connected) return sharedBrowser;
   if (browserLaunchPromise) return browserLaunchPromise;
+  console.log("[renderer] launching browser (single shared instance)");
   browserLaunchPromise = puppeteer.launch({
     args: [
       "--no-sandbox",
@@ -181,18 +184,33 @@ async function executeRender(ctx) {
     await page.setViewport({ width: 1080, height: 1350, deviceScaleFactor: 2 });
 
     const work = (async () => {
-      await page.setContent(html, { waitUntil: "load", timeout: RENDER_TIMEOUT_MS });
+      // Use domcontentloaded to avoid waiting for external fonts/images (reduces memory + timeout risk).
+      await page.setContent(html, { waitUntil: "domcontentloaded", timeout: RENDER_TIMEOUT_MS });
+      // Optional: wait for fonts if template uses local/custom fonts (bounded 5s to avoid hanging).
+      try {
+        await Promise.race([
+          page.evaluate(async () => {
+            if (document.fonts) await document.fonts.ready;
+          }),
+          new Promise((r) => setTimeout(r, 5000)),
+        ]);
+      } catch (_) {
+        /* ignore */
+      }
       const slideHandles = await page.$$(".slide");
       if (!slideHandles.length) throw new Error("No .slide elements found.");
       const i0 = slideIndex1 - 1;
       if (i0 >= slideHandles.length) {
+        for (const h of slideHandles) await h.dispose().catch(() => {});
         throw new Error(
           `slide_index ${slideIndex1} out of range (total slides: ${slideHandles.length}). Request had body_slides count: ${bodySlidesCount}.`
         );
       }
       await slideHandles[i0].screenshot({ path: outPath });
       const relativePath = path.relative(OUTPUT_DIR, outPath).replace(/\\/g, "/");
-      return { outPath, relativePath, totalSlides: slideHandles.length };
+      const totalSlides = slideHandles.length;
+      for (const h of slideHandles) await h.dispose().catch(() => {});
+      return { outPath, relativePath, totalSlides };
     })();
 
     const timeoutPromise = new Promise((_, reject) =>
@@ -207,13 +225,29 @@ async function executeRender(ctx) {
 /** Serializes all renders so only one Chrome page is active at a time (avoids OOM on Fly). */
 async function executeRenderWithLock(ctx) {
   return withRenderLock(async () => {
-    const result = await executeRender(ctx);
-    renderCount += 1;
-    if (renderCount >= RENDERERS_BEFORE_RESET) {
-      renderCount = 0;
-      await resetBrowser();
+    const memStart = process.memoryUsage().rss;
+    const startMs = Date.now();
+    try {
+      const result = await executeRender(ctx);
+      const durationMs = Date.now() - startMs;
+      const memEnd = process.memoryUsage().rss;
+      console.log(
+        `[renderer] slide=${ctx.slideIndex1} duration_ms=${durationMs} rss_before_mb=${Math.round(memStart / 1048576)} rss_after_mb=${Math.round(memEnd / 1048576)}`
+      );
+      renderCount += 1;
+      if (renderCount >= RENDERERS_BEFORE_RESET) {
+        renderCount = 0;
+        await resetBrowser();
+      }
+      return result;
+    } catch (err) {
+      const durationMs = Date.now() - startMs;
+      const memEnd = process.memoryUsage().rss;
+      console.error(
+        `[renderer] slide=${ctx.slideIndex1} FAILED after ${durationMs}ms rss_before_mb=${Math.round(memStart / 1048576)} rss_after_mb=${Math.round(memEnd / 1048576)} error=${err?.message || err}`
+      );
+      throw err;
     }
-    return result;
   });
 }
 

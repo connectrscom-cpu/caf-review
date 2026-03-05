@@ -30,7 +30,7 @@ export async function getAssetsForTask(taskId: string): Promise<TaskAsset[]> {
     object_path: string | null;
   }[];
 
-  return rows.map((r) => {
+  const mapped = rows.map((r) => {
     let url = r.public_url ?? null;
     if (!url && r.bucket && r.object_path && supabaseUrl) {
       const path = r.object_path.startsWith("/") ? r.object_path.slice(1) : r.object_path;
@@ -42,4 +42,19 @@ export async function getAssetsForTask(taskId: string): Promise<TaskAsset[]> {
       asset_type: r.asset_type ?? null,
     };
   });
+
+  // One asset per position, then one per URL (avoid duplicate rows / same image repeated)
+  const byPosition = new Map<number, TaskAsset>();
+  for (const a of mapped) {
+    if (!byPosition.has(a.position)) byPosition.set(a.position, a);
+  }
+  const byPositionList = Array.from(byPosition.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([, a]) => a);
+  const byUrl = new Map<string, TaskAsset>();
+  for (const a of byPositionList) {
+    const key = a.public_url || `pos-${a.position}`;
+    if (!byUrl.has(key)) byUrl.set(key, a);
+  }
+  return Array.from(byUrl.values()).sort((a, b) => a.position - b.position);
 }
