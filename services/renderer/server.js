@@ -328,6 +328,85 @@ app.post("/render", async (req, res) => {
   }
 });
 
+// POST /render-binary — same body as /render, returns PNG bytes directly (no JSON, no /output download).
+// Sync only; use when caller wants the image in one request (e.g. n8n → upload to Supabase).
+app.post("/render-binary", async (req, res) => {
+  let body = normalizeBody(req.body);
+  if (body.error) return res.status(400).json({ ok: false, error: body.error });
+
+  const template = body?.template ?? body?.["template"];
+  const job_id = body?.job_id ?? body?.["job.id"];
+  const slide_index = body?.slide_index ?? body?.["slide_index"];
+  const run_id = body?.run_id ?? body?.["run.id"];
+  const task_id = body?.task_id ?? body?.["task.id"];
+  const data = (body && body.data) != null ? body.data : {};
+
+  if (!template) return res.status(400).json({ ok: false, error: "Missing template" });
+
+  let templateData = normalizeTemplateData(body, data);
+  if (templateData.error) return res.status(400).json({ ok: false, error: templateData.error });
+
+  let bodySlidesCount = Array.isArray(templateData.body_slides) ? templateData.body_slides.length : 0;
+  let usedCache = false;
+  const cacheKey = packCacheKey(body);
+  if (bodySlidesCount === 0 && cacheKey) {
+    const cached = packCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < PACK_CACHE_TTL_MS && cached.pack) {
+      templateData = cached.pack;
+      bodySlidesCount = Array.isArray(templateData.body_slides) ? templateData.body_slides.length : 0;
+      usedCache = true;
+    }
+  }
+  if (bodySlidesCount > 0 && cacheKey && !usedCache) {
+    packCache.set(cacheKey, { pack: templateData, at: Date.now() });
+  }
+
+  if (slide_index === undefined || slide_index === null || slide_index === "") {
+    return res.status(400).json({ ok: false, error: "Missing slide_index (required)" });
+  }
+
+  const slideIndex1 = Number(slide_index);
+  if (!Number.isInteger(slideIndex1) || slideIndex1 < 1) {
+    return res.status(400).json({ ok: false, error: "slide_index must be an integer >= 1" });
+  }
+
+  const expectedTotalSlides = 1 + bodySlidesCount + 1;
+  if (slideIndex1 > expectedTotalSlides) {
+    return res.status(400).json({
+      ok: false,
+      error: `slide_index ${slideIndex1} out of range (max ${expectedTotalSlides}).`,
+    });
+  }
+
+  const safeJobId = String(job_id || "job").replace(/[^a-zA-Z0-9_-]/g, "_");
+  const slideFileName = `${String(slideIndex1).padStart(3, "0")}_slide.png`;
+  const hasRunId = run_id != null && String(run_id).trim() !== "";
+  const hasTaskId = task_id != null && String(task_id).trim() !== "";
+
+  const ctx = {
+    template,
+    templateData,
+    slideIndex1,
+    bodySlidesCount,
+    debugInfo: {},
+    safeJobId,
+    slideFileName,
+    run_id,
+    task_id,
+    hasRunId,
+    hasTaskId,
+  };
+
+  try {
+    const { outPath } = await executeRender(ctx);
+    const buffer = fs.readFileSync(outPath);
+    res.setHeader("Content-Type", "image/png");
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.get("/render/status/:requestId", (req, res) => {
   const job = asyncJobs.get(req.params.requestId);
   if (!job) return res.status(404).json({ ok: false, error: "Unknown or expired request_id" });
