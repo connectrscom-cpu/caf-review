@@ -24,7 +24,7 @@ CAF Backend
 ├── Renderer Service     (services/renderer) — HTTP API for n8n + playground
 ├── Template Playground  — visual preview of templates (Next.js app)
 ├── Review Console      — review content in Validation Review Queue (Next.js app)
-├── Supabase            — tasks + assets storage; decisions written here
+├── Supabase            — tasks + assets storage (decisions live in the sheet)
 └── Validation Sheet    — Google Sheet "Review Queue" = source of truth for what appears in console
 ```
 
@@ -62,7 +62,7 @@ Templates are Handlebars (`.hbs`) in `templates/`. All render calls must use `RE
 
 **Data:**
 
-- **Storage:** Supabase (`tasks`, `assets`). Decisions are written to `tasks` (decision, notes, rejection_tags, validator, submit, submitted_at, status).
+- **Storage:** Supabase (`tasks`, `assets`) for task/asset data. **Decisions are written only to the Review Queue Google Sheet** (not to Supabase).
 - **What appears:** Only tasks that are in the **Validation "Review Queue"** Google Sheet with:
   - **`status` = `Generated`** and **`review_status` = `READY`** (new items), or **`status` = `IN_REVIEW`** and **`review_status` = `READY`** (already loaded into console)
   - **`submit` ≠ TRUE** (not yet submitted)
@@ -82,9 +82,9 @@ If the Review Queue sheet is **not configured** (env vars missing or API error),
 - `GOOGLE_APPLICATION_CREDENTIALS` — path to key file (local), **or**
 - **OAuth2 (no service account key):** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` — see **docs/review-queue-oauth-setup.md** when you cannot create service account keys.
 
-**Setup for writing to the sheet:** Share the Validation spreadsheet with the service account email (or OAuth account) with **Editor** access. When the user submits a decision (Approve / Needs Edit / Reject), the backend updates Supabase and then the matching row in the sheet by `task_id`. Sheet columns written: `submit`, `status`/`review_status` (set to the decision: APPROVED, NEEDS_EDIT, REJECTED), `decision`, `notes`, `rejection_tags`, `validator`, `submitted_at`, `final_title_override`, `final_hook_override`, `final_caption_override`, `final_slides_json_override`, `template_key`. If the sheet is not configured or the row is missing, the save still succeeds (Supabase is updated).
+**Setup for writing to the sheet:** Share the Validation spreadsheet with the service account email (or OAuth account) with **Editor** access. When the user submits a decision (Approve / Needs Edit / Reject), the backend writes **only to the Review Queue sheet** (no Supabase write). The matching row is updated by `task_id`. Sheet columns written: `submit`, `status`/`review_status` (set to the decision: APPROVED, NEEDS_EDIT, REJECTED), `decision`, `notes`, `rejection_tags`, `validator`, `submitted_at`, `final_title_override`, `final_hook_override`, `final_caption_override`, `final_slides_json_override`, `template_key`, `preview_url`. The sheet is the source of truth for decisions.
 
-The spreadsheet must be **shared with the service account or OAuth account as Editor**. Implementation: `lib/google-sheets.ts` (read allowed task_ids; `updateReviewQueueRow()` writes all decision and override fields above), `lib/data/review-queue.ts` (on decision save, updates Supabase then the sheet). Cache: queue and allowed-ids are cached; both are invalidated when a decision is saved. Task content (e.g. `generated_slides_json`, `generated_title`, `generated_caption`, `generated_hook`) is read from the **Review Queue sheet** and merged over the Supabase row: the sheet is the source for that content so the review UI shows and parses what’s in the sheet.
+The spreadsheet must be **shared with the service account or OAuth account as Editor**. Implementation: `lib/google-sheets.ts` (read allowed task_ids and full rows; `updateReviewQueueRow()` writes all decision and override fields), `lib/data/review-queue.ts` (on decision save, writes only to the sheet via `updateReviewQueueRow()`). Cache: queue and allowed-ids are cached; both are invalidated when a decision is saved. Task content (e.g. `generated_slides_json`, `generated_title`, `generated_caption`, `generated_hook`) is read from the **Review Queue sheet** and merged over the Supabase row: the sheet is the source for that content so the review UI shows and parses what’s in the sheet.
 
 **Stable preview URL:** The backend writes a **preview_url** to the sheet that points to a **content view** that works before and after approval. Route `/content/[task_id]` (and API `GET /api/content/[task_id]`) loads the task by ID from Supabase only (no queue filter), so the link keeps working once the task is approved and no longer in the review queue. `preview_url` is set when a task is first marked IN_REVIEW and again when a decision is submitted. Set `NEXT_PUBLIC_APP_URL` so the stored URL is absolute (e.g. `https://your-app.vercel.app/content/{task_id}`).
 
@@ -94,7 +94,7 @@ The spreadsheet must be **shared with the service account or OAuth account as Ed
 
 - n8n calls `RENDERER_BASE_URL` for `/render` (or `/render-carousel`).
 - Rendered assets and task data live in Supabase; Validation layer writes to the Review Queue sheet.
-- Optional: `DECISION_WEBHOOK_URL` — app POSTs decision payload after saving to Supabase.
+- Optional: `DECISION_WEBHOOK_URL` — app can POST decision payload after saving to the sheet (if implemented).
 
 ---
 
@@ -145,7 +145,7 @@ When working on this repo:
 
 1. **Renderer:** Maintain in `services/renderer`; do not rewrite core logic. Expose existing + `/render-carousel`, `/preview-template` as needed.
 2. **Template Playground:** Same renderer engine; choose template, paste JSON, preview.
-3. **Review Console:** Only show tasks that are in the Validation “Review Queue” sheet with `status = IN_REVIEW` and `submit ≠ TRUE`. Data from Supabase filtered by sheet. Keep decisions writing to Supabase and optional webhook.
+3. **Review Console:** Only show tasks that are in the Validation “Review Queue” sheet with `status = IN_REVIEW` and `submit ≠ TRUE`. Data from Supabase filtered by sheet. **Decisions are written only to the sheet** (not to Supabase).
 4. **Review Queue source of truth:** Google Sheet. Implementation: `lib/google-sheets.ts` (task_ids from sheet), `lib/data/review-queue.ts` (filter Supabase by those ids). If sheet not configured, show empty queue.
 5. **Supabase:** Use for tasks and assets; RLS/service role as per existing setup.
 6. **RENDERER_BASE_URL:** All render calls use this env; Renderer Health page shows status.

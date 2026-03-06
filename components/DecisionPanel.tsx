@@ -55,20 +55,27 @@ export function DecisionPanel({
   const [validator, setValidator] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tokenInput, setTokenInput] = useState("");
 
   const token =
     typeof window !== "undefined"
       ? (document.cookie.match(/x-review-token=([^;]+)/)?.[1] ?? "")
       : "";
 
+  const hasToken = !!(process.env.NEXT_PUBLIC_REVIEW_WRITE_TOKEN || token);
+
   const getToken = useCallback(() => {
-    const t = process.env.NEXT_PUBLIC_REVIEW_WRITE_TOKEN ?? token;
-    return (t || (typeof window !== "undefined" ? prompt("Review write token (REVIEW_WRITE_TOKEN):") : null)) ?? "";
+    return (process.env.NEXT_PUBLIC_REVIEW_WRITE_TOKEN ?? token ?? "").trim();
   }, [token]);
 
   const submit = useCallback(async () => {
     if (!decision || !["APPROVED", "NEEDS_EDIT", "REJECTED"].includes(decision)) {
       setError("Select a decision: Approve, Needs Edit, or Reject");
+      return;
+    }
+    const authToken = getToken();
+    if (!authToken) {
+      setError("Review write token required. Set NEXT_PUBLIC_REVIEW_WRITE_TOKEN in Vercel, or enter it below and click Save.");
       return;
     }
     setSubmitting(true);
@@ -79,7 +86,7 @@ export function DecisionPanel({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-review-token": getToken(),
+          "x-review-token": authToken,
         },
         body: JSON.stringify({
           decision: effectiveDecision,
@@ -119,6 +126,13 @@ export function DecisionPanel({
     templateKey,
     hasEdits,
   ]);
+
+  const saveTokenToCookie = useCallback(() => {
+    const val = tokenInput.trim();
+    if (!val || typeof document === "undefined") return;
+    document.cookie = `x-review-token=${encodeURIComponent(val)}; path=/; max-age=31536000; samesite=strict`;
+    setError(null);
+  }, [tokenInput]);
 
   const toggleTag = (tag: string) => {
     setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
@@ -210,6 +224,32 @@ export function DecisionPanel({
           onChange={(e) => setValidator(e.target.value)}
         />
       </div>
+
+      {!hasToken && (
+        <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+          <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
+            Review write token required to submit decisions
+          </p>
+          <p className="text-xs text-amber-700 dark:text-amber-300">
+            Set <code className="rounded bg-amber-100 px-1 dark:bg-amber-900">REVIEW_WRITE_TOKEN</code> and{" "}
+            <code className="rounded bg-amber-100 px-1 dark:bg-amber-900">NEXT_PUBLIC_REVIEW_WRITE_TOKEN</code> in
+            Vercel (or .env), or enter the token below and save (stored in this browser).
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              autoComplete="off"
+              placeholder="Paste token"
+              value={tokenInput}
+              onChange={(e) => setTokenInput(e.target.value)}
+              className="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+            />
+            <Button type="button" variant="secondary" size="sm" onClick={saveTokenToCookie} disabled={!tokenInput.trim()}>
+              Save token
+            </Button>
+          </div>
+        </div>
+      )}
 
       {error && (
         <p className="text-sm text-destructive">{error}</p>

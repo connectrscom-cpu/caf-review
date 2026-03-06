@@ -330,6 +330,12 @@ export interface DecisionUpdate {
   template_key?: string | null;
 }
 
+/**
+ * Save decision: full payload to the Review Queue sheet; minimal fields to Supabase.
+ * - Sheet: all decision + override columns (source of truth for captions, overrides, template).
+ * - Supabase: only decision, submit, submitted_at, status, notes, rejection_tags, validator
+ *   so the Approved list works and we don't duplicate caption/override data in the DB.
+ */
 export async function updateTaskDecision(
   taskId: string,
   payload: DecisionUpdate
@@ -344,11 +350,6 @@ export async function updateTaskDecision(
       submit: payload.submit,
       submitted_at: payload.submitted_at,
       status: payload.review_status,
-      final_title_override: payload.final_title_override ?? null,
-      final_hook_override: payload.final_hook_override ?? null,
-      final_caption_override: payload.final_caption_override ?? null,
-      final_slides_json_override: payload.final_slides_json_override ?? null,
-      template_key: payload.template_key ?? null,
       updated_at: new Date().toISOString(),
     })
     .eq("task_id", taskId);
