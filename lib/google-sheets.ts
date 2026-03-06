@@ -18,7 +18,13 @@ const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const ALLOWED_IDS_CACHE_TTL_MS = 60_000; // 1 minute
 let allowedIdsCache: { ids: string[]; expiresAt: number } | null = null;
 
-function getAuthClient(): ReturnType<typeof google.auth.getClient> | null {
+/** Auth client type accepted by google.sheets(); avoid Promise return type from getClient(). */
+type SheetsAuthClient =
+  | InstanceType<typeof google.auth.GoogleAuth>
+  | InstanceType<typeof google.auth.OAuth2>
+  | null;
+
+function getAuthClient(): SheetsAuthClient {
   // Option A: OAuth2 refresh token (no service account key required)
   const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
@@ -30,7 +36,7 @@ function getAuthClient(): ReturnType<typeof google.auth.getClient> | null {
       "http://localhost" // redirect not used when only refreshing
     );
     oauth2.setCredentials({ refresh_token: refreshToken });
-    return oauth2 as unknown as ReturnType<typeof google.auth.getClient>;
+    return oauth2;
   }
 
   // Option B: Service account JSON
