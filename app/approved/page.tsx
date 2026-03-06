@@ -42,7 +42,7 @@ export default function ApprovedPage() {
           Approved content
         </h1>
         <p className="text-xs text-muted-foreground sm:text-sm">
-          Tasks that were approved (decision = APPROVED). Stored in Supabase.
+          Tasks from the Review Queue sheet with status Approved (preview_url from sheet).
         </p>
       </header>
 

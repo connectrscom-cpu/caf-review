@@ -32,9 +32,13 @@ function WorkbenchContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const status = (searchParams.get("status") ?? "in_review") as "in_review" | "approved" | "rejected";
+  const validStatus = ["in_review", "approved", "rejected"].includes(status) ? status : "in_review";
+
   const queryString = useMemo(() => {
     const q = new URLSearchParams();
     searchParams.forEach((v, k) => q.set(k, v));
+    if (!q.has("status")) q.set("status", "in_review");
     return q.toString();
   }, [searchParams]);
 
@@ -71,11 +75,37 @@ function WorkbenchContent() {
 
   const groupBy = (searchParams.get("group") ?? "") as GroupBy;
 
+  const tabStatuses = [
+    { key: "in_review" as const, label: "In Review" },
+    { key: "approved" as const, label: "Approved" },
+    { key: "rejected" as const, label: "Rejected" },
+  ];
+
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-10 border-b bg-card px-4 py-3 sm:px-6 sm:py-4">
         <h1 className="text-lg font-semibold text-card-foreground sm:text-xl">CAF Review Console</h1>
         <p className="text-xs text-muted-foreground sm:text-sm">Workbench</p>
+        <div className="mt-3 flex gap-2 border-t border-border/50 pt-3">
+          {tabStatuses.map(({ key, label }) => {
+            const isActive = validStatus === key;
+            const q = new URLSearchParams(searchParams.toString());
+            q.set("status", key);
+            return (
+              <a
+                key={key}
+                href={`/?${q.toString()}`}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium no-underline ${
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                }`}
+              >
+                {label}
+              </a>
+            );
+          })}
+        </div>
       </header>
 
       <main className="flex flex-col gap-4 p-4 sm:flex-row sm:gap-6 sm:p-6">
@@ -108,6 +138,7 @@ function WorkbenchContent() {
               total={data.total}
               missingPreviewCount={data.missingPreviewCount}
               statusCounts={data.statusCounts}
+              contentSlug={validStatus === "in_review" ? "t" : "content"}
             />
           )}
         </div>

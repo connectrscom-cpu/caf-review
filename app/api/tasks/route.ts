@@ -2,10 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { getReviewQueue } from "@/lib/data/review-queue";
 import { filterRows, sortRows, paginateRows } from "@/lib/filters";
 import type { TaskListParams } from "@/lib/types";
+import type { QueueStatusTab } from "@/lib/cache";
 
 export const dynamic = "force-dynamic";
 
+const VALID_STATUS: QueueStatusTab[] = ["in_review", "approved", "rejected"];
+
 export async function GET(request: NextRequest) {
+  const statusParam = request.nextUrl.searchParams.get("status") ?? "in_review";
+  const status: QueueStatusTab = VALID_STATUS.includes(statusParam as QueueStatusTab)
+    ? (statusParam as QueueStatusTab)
+    : "in_review";
+
   const EXPECTED_COLUMNS = [
     "task_id",
     "run_id",
@@ -25,7 +33,7 @@ export async function GET(request: NextRequest) {
   ];
 
   try {
-    const { keys, rows } = await getReviewQueue();
+    const { keys, rows } = await getReviewQueue(status);
     const missing_columns = EXPECTED_COLUMNS.filter((k) => !keys.includes(k));
 
     const params: TaskListParams = {

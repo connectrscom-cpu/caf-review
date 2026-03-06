@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getApprovedContent } from "@/lib/data/review-queue";
+import { getReviewQueue } from "@/lib/data/review-queue";
 import type { ReviewQueueRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/approved — list tasks that were approved (decision = APPROVED, submit = TRUE).
- * Stored in Supabase; used for the "Approved content" page.
+ * GET /api/approved — list tasks from Review Queue sheet with status Approved.
+ * Same as GET /api/tasks?status=approved; kept for backward compatibility.
  */
 export async function GET(request: NextRequest) {
   try {
-    const limitParam = request.nextUrl.searchParams.get("limit");
-    const limit = limitParam ? Math.min(500, Math.max(1, parseInt(limitParam, 10))) : 500;
-
-    const { rows } = await getApprovedContent(limit);
+    const { rows } = await getReviewQueue("approved");
 
     const response: {
       items: ReviewQueueRow[];

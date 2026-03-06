@@ -16,11 +16,15 @@ import { google } from "googleapis";
 
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const ALLOWED_IDS_CACHE_TTL_MS = 60_000; // 1 minute
-/** Cached result: task IDs, markInReview, and full row data from sheet keyed by task_id. */
+/** Cached result: in-review, approved, and rejected sets from sheet. */
 let allowedIdsCache: {
   ids: string[];
   markInReview: string[];
   rowsByTaskId: Record<string, Record<string, string>>;
+  approvedTaskIds: string[];
+  approvedRowsByTaskId: Record<string, Record<string, string>>;
+  rejectedTaskIds: string[];
+  rejectedRowsByTaskId: Record<string, Record<string, string>>;
   expiresAt: number;
 } | null = null;
 
@@ -80,13 +84,23 @@ function columnToLetter(col: number): string {
   return s;
 }
 
+export type ReviewQueueStatusTab = "in_review" | "approved" | "rejected";
+
 export interface ReviewQueueSheetResult {
-  /** Task IDs to show in the Review Console. */
+  /** Task IDs for In Review tab (not submitted, IN_REVIEW or GENERATED + READY). */
   taskIds: string[];
   /** Task IDs that had status=Generated; caller should update sheet to IN_REVIEW. */
   markInReview: string[];
-  /** Full row data from the sheet for each allowed task (e.g. generated_slides_json, generated_title). */
+  /** Full row data for in-review tasks. */
   rowsByTaskId: Record<string, Record<string, string>>;
+  /** Task IDs for Approved tab (submit=TRUE, decision/status=APPROVED). */
+  approvedTaskIds: string[];
+  /** Full row data for approved tasks. */
+  approvedRowsByTaskId: Record<string, Record<string, string>>;
+  /** Task IDs for Rejected tab (decision/status=REJECTED). */
+  rejectedTaskIds: string[];
+  /** Full row data for rejected tasks. */
+  rejectedRowsByTaskId: Record<string, Record<string, string>>;
 }
 
 /**
@@ -115,6 +129,10 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<ReviewQueueSheet
       taskIds: allowedIdsCache.ids,
       markInReview: [],
       rowsByTaskId: allowedIdsCache.rowsByTaskId,
+      approvedTaskIds: allowedIdsCache.approvedTaskIds,
+      approvedRowsByTaskId: allowedIdsCache.approvedRowsByTaskId,
+      rejectedTaskIds: allowedIdsCache.rejectedTaskIds,
+      rejectedRowsByTaskId: allowedIdsCache.rejectedRowsByTaskId,
     };
   }
 
@@ -128,13 +146,26 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<ReviewQueueSheet
 
     const rows = res.data.values as string[][] | undefined;
     if (!rows || rows.length < 2) {
+      const empty = {
+        taskIds: [] as string[],
+        markInReview: [] as string[],
+        rowsByTaskId: {} as Record<string, Record<string, string>>,
+        approvedTaskIds: [] as string[],
+        approvedRowsByTaskId: {} as Record<string, Record<string, string>>,
+        rejectedTaskIds: [] as string[],
+        rejectedRowsByTaskId: {} as Record<string, Record<string, string>>,
+      };
       allowedIdsCache = {
         ids: [],
         markInReview: [],
         rowsByTaskId: {},
+        approvedTaskIds: [],
+        approvedRowsByTaskId: {},
+        rejectedTaskIds: [],
+        rejectedRowsByTaskId: {},
         expiresAt: Date.now() + ALLOWED_IDS_CACHE_TTL_MS,
       };
-      return { taskIds: [], markInReview: [], rowsByTaskId: {} };
+      return empty;
     }
 
     const rawHeaders = rows[0].map((h) => String(h ?? "").trim());
@@ -143,15 +174,28 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<ReviewQueueSheet
     const statusIdx = headersLower.indexOf("status");
     const reviewStatusIdx = headersLower.indexOf("review_status");
     const submitIdx = headersLower.indexOf("submit");
+    const decisionIdx = headersLower.indexOf("decision");
 
     if (taskIdIdx === -1 || statusIdx === -1 || reviewStatusIdx === -1) {
       allowedIdsCache = {
         ids: [],
         markInReview: [],
         rowsByTaskId: {},
+        approvedTaskIds: [],
+        approvedRowsByTaskId: {},
+        rejectedTaskIds: [],
+        rejectedRowsByTaskId: {},
         expiresAt: Date.now() + ALLOWED_IDS_CACHE_TTL_MS,
       };
-      return { taskIds: [], markInReview: [], rowsByTaskId: {} };
+      return {
+        taskIds: [],
+        markInReview: [],
+        rowsByTaskId: {},
+        approvedTaskIds: [],
+        approvedRowsByTaskId: {},
+        rejectedTaskIds: [],
+        rejectedRowsByTaskId: {},
+      };
     }
 
     /** Normalize sheet header to key: "Generated slides JSON" -> "generated_slides_json" */
@@ -168,33 +212,49 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<ReviewQueueSheet
     const allowed: string[] = [];
     const markInReview: string[] = [];
     const rowsByTaskId: Record<string, Record<string, string>> = {};
+    const approvedTaskIds: string[] = [];
+    const approvedRowsByTaskId: Record<string, Record<string, string>> = {};
+    const rejectedTaskIds: string[] = [];
+    const rejectedRowsByTaskId: Record<string, Record<string, string>> = {};
 
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
       const taskId = row[taskIdIdx] != null ? String(row[taskIdIdx]).trim() : "";
       if (!taskId) continue;
 
+      const sheetRow: Record<string, string> = {};
+      for (let c = 0; c < rawHeaders.length; c++) {
+        const key = headerToKey(rawHeaders[c]);
+        if (!key) continue;
+        const val = row[c];
+        sheetRow[key] = val != null ? String(val).trim() : "";
+      }
+
       const submitVal =
         submitIdx >= 0 && row[submitIdx] != null
           ? String(row[submitIdx]).trim().toUpperCase()
           : "";
-      if (submitVal === "TRUE") continue;
-
       const statusVal = norm(row[statusIdx]);
       const reviewStatusVal = norm(row[reviewStatusIdx]);
+      const decisionVal = decisionIdx >= 0 && row[decisionIdx] != null ? norm(row[decisionIdx]) : "";
+      const effectiveDecision = decisionVal || reviewStatusVal || statusVal;
+
+      if (submitVal === "TRUE") {
+        if (effectiveDecision === "APPROVED") {
+          approvedTaskIds.push(taskId);
+          approvedRowsByTaskId[taskId] = sheetRow;
+        } else if (effectiveDecision === "REJECTED") {
+          rejectedTaskIds.push(taskId);
+          rejectedRowsByTaskId[taskId] = sheetRow;
+        }
+        continue;
+      }
 
       const generatedAndReady = statusVal === "GENERATED" && reviewStatusVal === "READY";
       const inReviewAndReady = statusVal === "IN_REVIEW" && reviewStatusVal === "READY";
       if (generatedAndReady || inReviewAndReady) {
         allowed.push(taskId);
         if (generatedAndReady) markInReview.push(taskId);
-        const sheetRow: Record<string, string> = {};
-        for (let c = 0; c < rawHeaders.length; c++) {
-          const key = headerToKey(rawHeaders[c]);
-          if (!key) continue;
-          const val = row[c];
-          sheetRow[key] = val != null ? String(val).trim() : "";
-        }
         rowsByTaskId[taskId] = sheetRow;
       }
     }
@@ -203,9 +263,21 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<ReviewQueueSheet
       ids: allowed,
       markInReview,
       rowsByTaskId,
+      approvedTaskIds,
+      approvedRowsByTaskId,
+      rejectedTaskIds,
+      rejectedRowsByTaskId,
       expiresAt: Date.now() + ALLOWED_IDS_CACHE_TTL_MS,
     };
-    return { taskIds: allowed, markInReview, rowsByTaskId };
+    return {
+      taskIds: allowed,
+      markInReview,
+      rowsByTaskId,
+      approvedTaskIds,
+      approvedRowsByTaskId,
+      rejectedTaskIds,
+      rejectedRowsByTaskId,
+    };
   } catch {
     return null;
   }

@@ -1,6 +1,6 @@
 import type { ReviewQueueRow } from "@/lib/types";
 import { getSupabase } from "@/lib/supabase/server";
-import { getCachedSheetData, setCachedSheetData, invalidateSheetCache } from "@/lib/cache";
+import { getCachedSheetData, setCachedSheetData, invalidateSheetCache, type QueueStatusTab } from "@/lib/cache";
 import { getReviewQueueTaskIdsFromSheet, updateReviewQueueRow, invalidateReviewQueueSheetCache } from "@/lib/google-sheets";
 
 const CACHE_TTL_MS =
@@ -49,13 +49,12 @@ export interface ReviewQueueData {
 }
 
 /**
- * Fetch review queue: only tasks that appear in the Validation "Review Queue" sheet
- * with status = IN_REVIEW and submit != TRUE. Data is loaded from Supabase and
- * filtered by the sheet; tasks.status → review_status for filters. Cached.
- * If the sheet is not configured or returns no allowed task_ids, returns empty (never all DB tasks).
+ * Fetch review queue for one tab: In Review, Approved, or Rejected.
+ * All data comes from the Review Queue sheet (filtered by status); Supabase is only for task/asset fields to merge.
+ * Cached per status.
  */
-export async function getReviewQueue(): Promise<ReviewQueueData> {
-  const cached = getCachedSheetData();
+export async function getReviewQueue(status: QueueStatusTab = "in_review"): Promise<ReviewQueueData> {
+  const cached = getCachedSheetData(status);
   if (cached) {
     return {
       ...cached,
@@ -64,15 +63,26 @@ export async function getReviewQueue(): Promise<ReviewQueueData> {
   }
 
   const sheetResult = await getReviewQueueTaskIdsFromSheet();
-  // If sheet is not configured or returns null, show nothing (do not show all DB tasks).
+  if (sheetResult === null) {
+    const { keys, keyToOriginal, rawHeaders } = buildKeysFromRows([]);
+    return { keyToOriginal, keys, rows: [], rawHeaders };
+  }
+
   const taskIdFilter =
-    sheetResult === null || sheetResult.taskIds.length === 0
-      ? []
-      : sheetResult.taskIds;
-  const sheetRowsByTaskId = sheetResult?.rowsByTaskId ?? {};
+    status === "in_review"
+      ? sheetResult.taskIds
+      : status === "approved"
+        ? sheetResult.approvedTaskIds
+        : sheetResult.rejectedTaskIds;
+  const sheetRowsByTaskId =
+    status === "in_review"
+      ? sheetResult.rowsByTaskId
+      : status === "approved"
+        ? sheetResult.approvedRowsByTaskId
+        : sheetResult.rejectedRowsByTaskId;
 
   // When tasks first appear in the console (status=Generated, review_status=READY), update sheet to IN_REVIEW and set stable preview_url.
-  if (sheetResult?.markInReview.length) {
+  if (status === "in_review" && sheetResult.markInReview.length) {
     for (const taskId of sheetResult.markInReview) {
       const fields: Parameters<typeof updateReviewQueueRow>[1] = { review_status: "IN_REVIEW" };
       const previewUrl = getContentPreviewUrl(taskId);
@@ -160,21 +170,34 @@ export async function getReviewQueue(): Promise<ReviewQueueData> {
 
   const { keys, keyToOriginal, rawHeaders } = buildKeysFromRows(rows);
   const data = { headers: rawHeaders, keyToOriginal, keys, rows };
-  setCachedSheetData(data);
+  setCachedSheetData(data, status);
   return { keyToOriginal, keys, rows, rawHeaders };
 }
 
+/** Find a task in any tab (in review, approved, rejected) and return merged row from sheet + Supabase. */
 export async function getTaskByTaskId(
   taskId: string
 ): Promise<{ rowIndex: number; data: ReviewQueueRow } | null> {
-  const { rows } = await getReviewQueue();
-  const idx = rows.findIndex(
-    (r) => (r.task_id ?? "").trim() === taskId.trim()
-  );
-  if (idx === -1) return null;
-  const data = rows[idx];
+  const sheetResult = await getReviewQueueTaskIdsFromSheet();
+  const normalizedId = taskId.trim();
+  const sheetRow =
+    sheetResult != null
+      ? sheetResult.rowsByTaskId[normalizedId] ??
+        sheetResult.approvedRowsByTaskId[normalizedId] ??
+        sheetResult.rejectedRowsByTaskId[normalizedId]
+      : undefined;
+  const fromSupabase = await getTaskByTaskIdFromSupabase(taskId);
+  const data: ReviewQueueRow = fromSupabase
+    ? rowToReviewRow(fromSupabase.data as Record<string, unknown>)
+    : {};
+  if (sheetRow) {
+    for (const [k, v] of Object.entries(sheetRow)) {
+      if (k) data[k] = v === "" ? undefined : v;
+    }
+  }
+  if (Object.keys(data).length === 0) return null;
   if (data.status != null && data.review_status == null) data.review_status = data.status;
-  return { rowIndex: idx + 2, data };
+  return { rowIndex: 1, data };
 }
 
 /** Normalize task_id for fallback match (e.g. SNS_..._row0008_v1 -> SNS_..._row0008). */
@@ -235,87 +258,6 @@ export async function getTaskByTaskIdFromSupabase(
   return { data };
 }
 
-/** Default limit for approved content list. */
-const APPROVED_LIST_LIMIT = 500;
-
-/**
- * Fetch tasks that were approved (decision = APPROVED, submit = TRUE) from Supabase.
- * Used for the "Approved content" list; same row shape as queue (with video_url from assets).
- * Not cached so the list stays up to date.
- */
-export async function getApprovedContent(limit = APPROVED_LIST_LIMIT): Promise<ReviewQueueData> {
-  const supabase = getSupabase();
-  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(/\/$/, "");
-
-  // submit is stored as string "TRUE" when we write from the decision API
-  const { data: tasksData, error: tasksError } = await supabase
-    .from("tasks")
-    .select("*")
-    .eq("decision", "APPROVED")
-    .eq("submit", "TRUE")
-    .order("submitted_at", { ascending: false })
-    .limit(limit);
-
-  if (tasksError) throw new Error(tasksError.message);
-
-  const tasks = (tasksData ?? []) as Record<string, unknown>[];
-  const taskIds = tasks.map((t) => t.task_id).filter(Boolean) as string[];
-
-  if (taskIds.length === 0) {
-    const { keys, keyToOriginal, rawHeaders } = buildKeysFromRows([]);
-    return { keyToOriginal, keys, rows: [], rawHeaders };
-  }
-
-  const baseIds = Array.from(new Set(taskIds.map((id) => baseTaskId(id))));
-  const allIds = Array.from(new Set(taskIds.concat(baseIds)));
-  const { data: assetsData } = await getSupabase()
-    .from("assets")
-    .select("task_id, public_url, asset_type, bucket, object_path")
-    .in("task_id", allIds)
-    .order("position", { ascending: true });
-
-  const assets = (assetsData ?? []) as {
-    task_id: string;
-    public_url: string | null;
-    asset_type: string | null;
-    bucket: string | null;
-    object_path: string | null;
-  }[];
-
-  const assetsByTask: Record<string, { public_url?: string }> = {};
-  const assetsByBase: Record<string, { public_url?: string }> = {};
-  for (const a of assets) {
-    let url = a.public_url ?? null;
-    if (!url && a.bucket && a.object_path && supabaseUrl) {
-      const path = a.object_path.startsWith("/") ? a.object_path.slice(1) : a.object_path;
-      url = `${supabaseUrl}/storage/v1/object/public/${a.bucket}/${path}`;
-    }
-    if (url) {
-      if (!assetsByTask[a.task_id]) assetsByTask[a.task_id] = {};
-      if (!assetsByTask[a.task_id].public_url) assetsByTask[a.task_id].public_url = url;
-      const base = baseTaskId(a.task_id);
-      if (!assetsByBase[base]) assetsByBase[base] = {};
-      if (!assetsByBase[base].public_url) assetsByBase[base].public_url = url;
-    }
-  }
-
-  const rows: ReviewQueueRow[] = tasks.map((t) => {
-    const row = rowToReviewRow(t);
-    if (row.status != null) row.review_status = row.status;
-    const tid = String(t.task_id);
-    const asset = assetsByTask[tid] ?? assetsByBase[baseTaskId(tid)];
-    if (asset?.public_url && !row.video_url) row.video_url = asset.public_url;
-    if (!row.preview_url) {
-      const previewUrl = getContentPreviewUrl(tid);
-      if (previewUrl) row.preview_url = previewUrl;
-    }
-    return row;
-  });
-
-  const { keys, keyToOriginal, rawHeaders } = buildKeysFromRows(rows);
-  return { keyToOriginal, keys, rows, rawHeaders };
-}
-
 export interface DecisionUpdate {
   decision: string;
   notes?: string;
@@ -332,31 +274,13 @@ export interface DecisionUpdate {
 }
 
 /**
- * Save decision: full payload to the Review Queue sheet; minimal fields to Supabase.
- * - Sheet: all decision + override columns (source of truth for captions, overrides, template).
- * - Supabase: only decision, submit, submitted_at, status, notes, rejection_tags, validator
- *   so the Approved list works and we don't duplicate caption/override data in the DB.
+ * Save decision to the Review Queue sheet only (no Supabase write).
+ * Sheet is source of truth; preview_url is written so the Approved/Rejected tabs show the link.
  */
 export async function updateTaskDecision(
   taskId: string,
   payload: DecisionUpdate
 ): Promise<void> {
-  const { error } = await getSupabase()
-    .from("tasks")
-    .update({
-      decision: payload.decision,
-      notes: payload.notes ?? null,
-      rejection_tags: payload.rejection_tags ?? null,
-      validator: payload.validator ?? null,
-      submit: payload.submit,
-      submitted_at: payload.submitted_at,
-      status: payload.review_status,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("task_id", taskId);
-
-  if (error) throw new Error(error.message);
-
   const sheetFields: Parameters<typeof updateReviewQueueRow>[1] = {
     submit: payload.submit,
     review_status: payload.decision,

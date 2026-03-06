@@ -34,7 +34,7 @@ export default function RootLayout({
             <Link href="/settings/renderer" className="text-xs text-muted-foreground hover:text-foreground sm:text-sm">
               Renderer Settings
             </Link>
-            <Link href="/approved" className="text-xs text-muted-foreground hover:text-foreground sm:text-sm">
+            <Link href="/?status=approved" className="text-xs text-muted-foreground hover:text-foreground sm:text-sm">
               Approved
             </Link>
           </div>
