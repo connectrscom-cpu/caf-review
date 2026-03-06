@@ -41,6 +41,10 @@ export function createSyntheticSlides(count: number): NormalizedSlide[] {
 /**
  * Parse generated_slides_json into a flat list of normalized slides (cover, body, cta)
  * so we can show one per "flashcard" and edit text.
+ * Accepts:
+ * - Root-level array: [{ index, slide_number?, headline, body }, ...] (e.g. from Google Sheets)
+ * - Object with slides: { slides: [{ headline, body }, ...] }
+ * - Object with cover_slide + body_slides + cta_slide
  */
 export function parseSlidesFromJson(json: string | undefined): {
   slides: NormalizedSlide[];
@@ -48,7 +52,7 @@ export function parseSlidesFromJson(json: string | undefined): {
 } {
   if (!json?.trim()) return { slides: [], raw: null };
   try {
-    const raw = JSON.parse(json) as CarouselSlidesPayload;
+    const parsed = JSON.parse(json) as CarouselSlidesPayload | unknown[];
     const slides: NormalizedSlide[] = [];
     let index = 0;
 
@@ -57,21 +61,29 @@ export function parseSlidesFromJson(json: string | undefined): {
       body: String(bodyKeys.map((k) => o[k]).find((v) => v != null && String(v).trim()) ?? ""),
     });
 
-    if (Array.isArray(raw.slides) && raw.slides.length > 0) {
-      for (let i = 0; i < raw.slides.length; i++) {
-        const s = raw.slides[i] as Record<string, unknown>;
+    // Root-level array (e.g. from Google Sheets generated_slides_json)
+    const slidesArray = Array.isArray(parsed)
+      ? parsed
+      : (parsed as CarouselSlidesPayload).slides;
+
+    if (Array.isArray(slidesArray) && slidesArray.length > 0) {
+      const raw = Array.isArray(parsed) ? { slides: slidesArray } : (parsed as CarouselSlidesPayload);
+      for (let i = 0; i < slidesArray.length; i++) {
+        const s = slidesArray[i] as Record<string, unknown>;
         const { headline, body } = textFrom(s, ["headline", "title", "heading"], ["body", "text", "content"]);
-        const type = i === 0 ? "cover" : i === raw.slides.length - 1 ? "cta" : "body";
+        const type = i === 0 ? "cover" : i === slidesArray.length - 1 ? "cta" : "body";
         slides.push({
           index: index++,
           type,
           headline,
-          body: type === "cta" ? body : body,
+          body,
           handle: String(s.handle ?? s.cta_handle ?? ""),
         });
       }
       return { slides, raw };
     }
+
+    const raw = parsed as CarouselSlidesPayload;
 
     const cover = (raw.cover_slide ?? {}) as Record<string, unknown>;
     const coverHeadline =

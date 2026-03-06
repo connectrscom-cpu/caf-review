@@ -28,6 +28,8 @@ export interface DecisionPanelProps {
   finalSlidesJsonOverride?: string;
   /** Template for rework (saved with decision, used when re-rendering) */
   templateKey?: string;
+  /** When true, Approve is disabled; any change must go through Needs Edit */
+  hasEdits?: boolean;
 }
 
 export function DecisionPanel({
@@ -40,6 +42,7 @@ export function DecisionPanel({
   finalCaptionOverride,
   finalSlidesJsonOverride,
   templateKey,
+  hasEdits = false,
 }: DecisionPanelProps) {
   const [decision, setDecision] = useState<DecisionValue | "">(
     (existingDecision as DecisionValue) || ""
@@ -67,6 +70,7 @@ export function DecisionPanel({
     }
     setSubmitting(true);
     setError(null);
+    const effectiveDecision = decision === "APPROVED" && hasEdits ? "NEEDS_EDIT" : decision;
     try {
       const res = await fetch(`/api/task/${encodeURIComponent(taskId)}/decision`, {
         method: "POST",
@@ -75,7 +79,7 @@ export function DecisionPanel({
           "x-review-token": getToken(),
         },
         body: JSON.stringify({
-          decision,
+          decision: effectiveDecision,
           notes: notes.trim() || undefined,
           rejection_tags: tags,
           validator: validator.trim() || undefined,
@@ -110,6 +114,7 @@ export function DecisionPanel({
     finalCaptionOverride,
     finalSlidesJsonOverride,
     templateKey,
+    hasEdits,
   ]);
 
   const toggleTag = (tag: string) => {
@@ -126,7 +131,8 @@ export function DecisionPanel({
           variant={decision === "APPROVED" ? "success" : "outline"}
           size="sm"
           onClick={() => setDecision("APPROVED")}
-          title="Shortcut: A"
+          title={hasEdits ? "Not available when edits are made (use Needs Edit)" : "Shortcut: A"}
+          disabled={hasEdits}
         >
           Approve
         </Button>
@@ -149,6 +155,11 @@ export function DecisionPanel({
           Reject
         </Button>
       </div>
+      {hasEdits && (
+        <p className="text-xs text-muted-foreground">
+          Any change to title, hook, caption, template, or slides requires <strong>Needs Edit</strong>; Approve is only for no edits.
+        </p>
+      )}
 
       <div className="grid gap-2">
         <Label className="text-xs">Notes</Label>

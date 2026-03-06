@@ -19,6 +19,8 @@ export async function GET(request: NextRequest) {
     "preview_url",
     "video_url",
     "generated_title",
+    "generated_hook",
+    "generated_caption",
     "generated_slides_json",
   ];
 

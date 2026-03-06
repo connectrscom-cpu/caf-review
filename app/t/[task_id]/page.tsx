@@ -60,11 +60,11 @@ export default function TaskPage() {
 
   useEffect(() => {
     if (!data) return;
-    setEditedCaption((data.generated_caption ?? "").trim());
+    setEditedCaption((data.final_caption_override ?? data.generated_caption ?? "").trim());
     setEditedTitle((data.final_title_override ?? data.generated_title ?? "").trim());
     setEditedHook((data.final_hook_override ?? data.generated_hook ?? "").trim());
     setTemplateKey((data.template_key ?? "").trim());
-  }, [data?.generated_caption, data?.generated_title, data?.generated_hook, data?.final_title_override, data?.final_hook_override, data?.template_key, data?.task_id]);
+  }, [data?.generated_caption, data?.generated_title, data?.generated_hook, data?.final_caption_override, data?.final_title_override, data?.final_hook_override, data?.template_key, data?.task_id]);
 
   useEffect(() => {
     fetch("/api/renderer/templates")
@@ -122,8 +122,10 @@ export default function TaskPage() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === "a" || e.key === "A") {
         e.preventDefault();
-        const btn = document.querySelector('[data-decision="APPROVED"]') as HTMLButtonElement;
-        btn?.click();
+        if (!hasEdits) {
+          const btn = document.querySelector('[data-decision="APPROVED"]') as HTMLButtonElement;
+          btn?.click();
+        }
       }
       if (e.key === "e" || e.key === "E") {
         e.preventDefault();
@@ -138,9 +140,39 @@ export default function TaskPage() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, []);
+  }, [hasEdits]);
 
   const runId = (data?.run_id ?? "").trim();
+
+  const hasEdits = useMemo(() => {
+    if (!data) return false;
+    const initialTitle = (data.final_title_override ?? data.generated_title ?? "").trim();
+    const initialHook = (data.final_hook_override ?? data.generated_hook ?? "").trim();
+    const initialCaption = (data.final_caption_override ?? data.generated_caption ?? "").trim();
+    const initialTemplateKey = (data.template_key ?? "").trim();
+    if (
+      editedTitle !== initialTitle ||
+      editedHook !== initialHook ||
+      editedCaption !== initialCaption ||
+      templateKey !== initialTemplateKey
+    )
+      return true;
+    if (editedSlides.length !== initialSlides.length) return true;
+    for (let i = 0; i < editedSlides.length; i++) {
+      const a = editedSlides[i];
+      const b = initialSlides[i];
+      if (!b || a.headline !== b.headline || a.body !== b.body) return true;
+    }
+    return false;
+  }, [
+    data,
+    editedTitle,
+    editedHook,
+    editedCaption,
+    templateKey,
+    editedSlides,
+    initialSlides,
+  ]);
 
   const finalSlidesJsonOverride =
     editedSlides.length > 0 && rawPayload !== undefined
@@ -218,6 +250,7 @@ export default function TaskPage() {
                 finalCaptionOverride={editedCaption}
                 finalSlidesJsonOverride={finalSlidesJsonOverride}
                 templateKey={templateKey}
+                hasEdits={hasEdits}
               />
               <CarouselEditsExport
                 taskId={task_id}
