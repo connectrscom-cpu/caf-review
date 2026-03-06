@@ -183,11 +183,11 @@ export function TaskTable({
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full text-left">
+      <div className="overflow-x-auto rounded-md border -mx-1 sm:mx-0">
+        <table className="w-full min-w-[640px] text-left">
           <thead className="bg-muted/50">
             <tr>
-              <th className="p-2 text-xs font-medium w-[3.5rem]">Preview</th>
+              <th className="p-2 text-xs font-medium w-[3.5rem] shrink-0">Preview</th>
               <th className="p-2 text-xs font-medium">Task ID</th>
               <th className="p-2 text-xs font-medium">Run</th>
               <th className="p-2 text-xs font-medium">Platform</th>

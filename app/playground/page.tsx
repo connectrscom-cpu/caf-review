@@ -353,10 +353,10 @@ export default function PlaygroundPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card px-6 py-4">
-        <h1 className="text-xl font-semibold text-card-foreground">Template Playground</h1>
-        <p className="text-sm text-muted-foreground">Preview carousel templates or design new ones with live preview</p>
-        <nav className="mt-3 flex flex-wrap gap-2">
+      <header className="border-b bg-card px-4 py-3 sm:px-6 sm:py-4">
+        <h1 className="text-lg font-semibold text-card-foreground sm:text-xl">Template Playground</h1>
+        <p className="text-xs text-muted-foreground sm:text-sm">Preview carousel templates or design new ones with live preview</p>
+        <nav className="mt-3 flex flex-wrap gap-2" aria-label="Tabs">
           <button
             type="button"
             onClick={() => setActiveTab("preview")}
@@ -375,7 +375,7 @@ export default function PlaygroundPage() {
       </header>
 
       {activeTab === "preview" && (
-        <main className="grid gap-6 p-6 lg:grid-cols-2">
+        <main className="grid gap-4 p-4 sm:gap-6 sm:p-6 lg:grid-cols-2">
           <div className="space-y-4">
             <div>
               <label className="mb-2 block text-sm font-medium text-muted-foreground">Template</label>
@@ -456,7 +456,7 @@ export default function PlaygroundPage() {
       )}
 
       {activeTab === "design" && (
-        <main className="grid gap-6 p-6 lg:grid-cols-2">
+        <main className="grid gap-4 p-4 sm:gap-6 sm:p-6 lg:grid-cols-2">
           <div className="space-y-4">
             <div>
               <label className="mb-2 block text-sm font-medium text-muted-foreground">Edit template</label>

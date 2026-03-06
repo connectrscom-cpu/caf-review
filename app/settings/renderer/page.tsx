@@ -35,12 +35,12 @@ export default function RendererSettingsPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card px-6 py-4">
-        <h1 className="text-xl font-semibold text-card-foreground">Renderer Settings / Health</h1>
-        <p className="text-sm text-muted-foreground">CAF Renderer connectivity and status</p>
+      <header className="border-b bg-card px-4 py-3 sm:px-6 sm:py-4">
+        <h1 className="text-lg font-semibold text-card-foreground sm:text-xl">Renderer Settings / Health</h1>
+        <p className="text-xs text-muted-foreground sm:text-sm">CAF Renderer connectivity and status</p>
       </header>
 
-      <main className="p-6">
+      <main className="p-4 sm:p-6">
         {loading && <p className="text-muted-foreground">Loading…</p>}
         {!loading && health && (
           <div className="max-w-xl space-y-4">

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { TaskViewer } from "@/components/TaskViewer";
-import { parseSlidesFromJson } from "@/lib/carousel-slides";
+import { createSyntheticSlides, parseSlidesFromJson } from "@/lib/carousel-slides";
 import type { NormalizedSlide } from "@/lib/carousel-slides";
 import type { ReviewQueueRow } from "@/lib/types";
 
@@ -41,8 +41,19 @@ export default function ContentPage() {
       setEditedSlides((prev) =>
         prev.length !== initialSlides.length ? initialSlides : prev
       );
+      return;
     }
-  }, [initialSlides, initialSlides.length]);
+    // If this is a carousel (multiple image assets) but slides JSON is missing,
+    // synthesize slides so the stable content link can still render as a slider.
+    const imageUrls = assetUrls.filter((u) => /\.(png|jpg|jpeg|gif|webp|avif)(\?|$)/i.test(u));
+    const videoUrls = assetUrls.filter((u) => /\.(mp4|webm|mov|m4v)(\?|$)/i.test(u));
+    if (videoUrls.length > 0) return;
+    if (imageUrls.length > 1) {
+      setEditedSlides((prev) =>
+        prev.length !== imageUrls.length ? createSyntheticSlides(imageUrls.length) : prev
+      );
+    }
+  }, [initialSlides, initialSlides.length, assetUrls]);
 
   const fetchContent = useCallback(async () => {
     if (!task_id) return;
@@ -112,12 +123,13 @@ export default function ContentPage() {
         )}
 
         {data && !loading && (
-          <div className="max-w-4xl">
+          <div className="w-full max-w-4xl">
             <TaskViewer
               data={data}
               assetUrls={assetUrls}
               editedSlides={editedSlides.length > 0 ? editedSlides : undefined}
               fallbackPreviewUrl={assetUrls?.[0]}
+              readOnly
             />
           </div>
         )}

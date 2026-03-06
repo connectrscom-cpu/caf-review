@@ -20,8 +20,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen font-sans antialiased">
-        <nav className="sticky top-0 z-20 border-b bg-card px-3 py-2 sm:px-4 sm:py-3">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 sm:gap-6">
+        <nav className="sticky top-0 z-20 border-b bg-card px-3 py-2 sm:px-4 sm:py-3" aria-label="Main">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 sm:gap-6 md:gap-8">
             <Link href="/" className="text-sm font-semibold text-card-foreground hover:underline sm:text-base">
               CAF Backend
             </Link>

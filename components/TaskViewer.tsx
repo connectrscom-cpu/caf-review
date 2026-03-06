@@ -2,11 +2,20 @@
 
 import { useMemo } from "react";
 import { CarouselSlider } from "@/components/CarouselSlider";
+import { createSyntheticSlides } from "@/lib/carousel-slides";
 import type { NormalizedSlide } from "@/lib/carousel-slides";
 import type { ReviewQueueRow } from "@/lib/types";
 
 function getVal(row: ReviewQueueRow, key: string): string {
   return (row[key] ?? "").trim();
+}
+
+function isImageUrl(url: string): boolean {
+  return /\.(png|jpg|jpeg|gif|webp|avif)(\?|$)/i.test(url);
+}
+
+function isVideoUrl(url: string): boolean {
+  return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url);
 }
 
 export interface TaskViewerProps {
@@ -18,10 +27,21 @@ export interface TaskViewerProps {
   onSlidesChange?: (slides: NormalizedSlide[]) => void;
   /** Fallback URL when data has no preview_url/video_url (e.g. first asset from assets API). */
   fallbackPreviewUrl?: string;
+  /** When true, show a non-editable preview (used for stable /content links). */
+  readOnly?: boolean;
 }
 
-export function TaskViewer({ data, assetUrls, editedSlides, onSlidesChange, fallbackPreviewUrl }: TaskViewerProps) {
+export function TaskViewer({
+  data,
+  assetUrls,
+  editedSlides,
+  onSlidesChange,
+  fallbackPreviewUrl,
+  readOnly = false,
+}: TaskViewerProps) {
   const previewUrl = getVal(data, "preview_url");
+  const taskId = getVal(data, "task_id");
+  const flowType = getVal(data, "flow_type");
   const videoUrl = getVal(data, "video_url") || fallbackPreviewUrl || "";
   const slidesJson = getVal(data, "generated_slides_json");
 
@@ -35,80 +55,109 @@ export function TaskViewer({ data, assetUrls, editedSlides, onSlidesChange, fall
     }
   }, [slidesJson]);
 
-  const hasEditableCarousel = editedSlides && editedSlides.length > 0;
+  const urls = (assetUrls ?? []).map((u) => u?.trim()).filter(Boolean);
+  const imageUrls = urls.filter((u) => isImageUrl(u));
+  const videoUrls = urls.filter((u) => isVideoUrl(u));
+  const effectiveVideoUrl = (videoUrls[0] ?? "").trim() || (isVideoUrl(videoUrl) ? videoUrl : "");
 
-  if (hasEditableCarousel) {
+  const hasEditableCarousel = editedSlides && editedSlides.length > 0;
+  const sliderSlides =
+    editedSlides && editedSlides.length > 0
+      ? editedSlides
+      : imageUrls.length > 1
+        ? createSyntheticSlides(imageUrls.length)
+        : [];
+
+  const showCarousel = imageUrls.length > 1 && sliderSlides.length > 0;
+  const showSingleImage = !showCarousel && imageUrls.length === 1;
+  const showVideo = !showCarousel && !!effectiveVideoUrl;
+
+  if (showCarousel) {
     return (
       <div className="space-y-4">
-        {previewUrl && (
+        {previewUrl && taskId && (
           <a
             href={previewUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="text-sm text-primary hover:underline"
           >
-            Open full preview in new tab
+            Open link in new tab
           </a>
         )}
         <CarouselSlider
-          slides={editedSlides}
-          imageUrls={assetUrls}
-          onSlidesChange={onSlidesChange}
+          slides={sliderSlides}
+          imageUrls={imageUrls}
+          onSlidesChange={readOnly ? undefined : onSlidesChange}
+          readOnly={readOnly}
         />
       </div>
     );
   }
 
-  if (previewUrl) {
+  if (showVideo) {
     return (
-      <div className="space-y-4">
-        <div className="rounded-lg border bg-muted/30 p-4">
-          <p className="mb-2 text-sm font-medium">Preview</p>
-          <iframe
-            src={previewUrl}
-            title="Preview"
-            className="h-[60vh] w-full max-w-2xl rounded border bg-white"
-            sandbox="allow-scripts allow-same-origin"
-          />
+      <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
+        <p className="mb-2 text-sm font-medium">Preview</p>
+        <video
+          src={effectiveVideoUrl}
+          controls
+          playsInline
+          className="max-h-[70vh] w-full max-w-full rounded bg-black"
+        />
+        <div className="flex flex-wrap gap-3 text-sm">
+          <a
+            href={effectiveVideoUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline"
+          >
+            Open video in new tab
+          </a>
+          {previewUrl && (
+            <a
+              href={previewUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground hover:underline"
+            >
+              Open content link
+            </a>
+          )}
         </div>
-        <a
-          href={previewUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm text-primary hover:underline"
-        >
-          Open preview in new tab
-        </a>
       </div>
     );
   }
 
-  if (videoUrl && !hasEditableCarousel) {
-    const isImageUrl = /\.(png|jpg|jpeg|gif|webp)(\?|$)/i.test(videoUrl);
+  if (showSingleImage) {
     return (
       <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
         <p className="mb-2 text-sm font-medium">Preview</p>
-        {isImageUrl ? (
-          <img
-            src={videoUrl}
-            alt="Carousel slide"
-            className="max-h-[70vh] w-full max-w-2xl rounded object-contain"
-          />
-        ) : (
-          <video
-            src={videoUrl}
-            controls
-            className="max-h-[70vh] w-full max-w-2xl rounded"
-          />
-        )}
-        <a
-          href={videoUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm text-primary hover:underline"
-        >
-          Open preview in new tab
-        </a>
+        <img
+          src={imageUrls[0]}
+          alt={flowType ? `${flowType} preview` : "Preview"}
+          className="max-h-[70vh] w-full max-w-full rounded object-contain"
+        />
+        <div className="flex flex-wrap gap-3 text-sm">
+          <a
+            href={imageUrls[0]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline"
+          >
+            Open image in new tab
+          </a>
+          {previewUrl && (
+            <a
+              href={previewUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground hover:underline"
+            >
+              Open content link
+            </a>
+          )}
+        </div>
       </div>
     );
   }
