@@ -15,13 +15,15 @@ export interface TaskTableProps {
   total: number;
   missingPreviewCount?: number;
   statusCounts?: { READY?: number; SUBMITTED?: number; APPROVED?: number; NEEDS_EDIT?: number; REJECTED?: number };
+  /** Link to /t/[id] (review) or /content/[id] (stable content view). Default "t". */
+  contentSlug?: "t" | "content";
 }
 
 function getVal(row: ReviewQueueRow, key: string): string {
   return (row[key] ?? "").trim();
 }
 
-function TaskRow({ row }: { row: ReviewQueueRow }) {
+function TaskRow({ row, contentSlug = "t" }: { row: ReviewQueueRow; contentSlug?: "t" | "content" }) {
   const taskId = getVal(row, "task_id");
   const platform = getVal(row, "platform");
   const flowType = getVal(row, "flow_type");
@@ -29,15 +31,16 @@ function TaskRow({ row }: { row: ReviewQueueRow }) {
   const decision = getVal(row, "decision");
   const title = getVal(row, "generated_title") || taskId;
   const previewUrl = getVal(row, "preview_url") || getVal(row, "video_url");
+  const taskHref = `/${contentSlug}/${encodeURIComponent(taskId)}`;
 
   return (
     <tr className="border-b border-border hover:bg-muted/50">
       <td className="p-2">
         {previewUrl ? (
           <Link
-            href={`/t/${encodeURIComponent(taskId)}`}
+            href={taskHref}
             className="block w-14 h-14 rounded border bg-muted overflow-hidden shrink-0 focus:outline-none focus:ring-2 focus:ring-ring"
-            title="Open task"
+            title={contentSlug === "content" ? "View content" : "Open task"}
           >
             <img
               src={previewUrl}
@@ -51,7 +54,7 @@ function TaskRow({ row }: { row: ReviewQueueRow }) {
       </td>
       <td className="p-2 text-sm">
         <Link
-          href={`/t/${encodeURIComponent(taskId)}`}
+          href={taskHref}
           className="font-medium text-primary hover:underline"
         >
           {taskId}
@@ -93,12 +96,12 @@ function TaskRow({ row }: { row: ReviewQueueRow }) {
   );
 }
 
-function TableBody({ items, groupBy }: { items: ReviewQueueRow[]; groupBy: GroupBy }) {
+function TableBody({ items, groupBy, contentSlug = "t" }: { items: ReviewQueueRow[]; groupBy: GroupBy; contentSlug?: "t" | "content" }) {
   if (!groupBy) {
     return (
       <tbody>
         {items.map((row) => (
-          <TaskRow key={getVal(row, "task_id")} row={row} />
+          <TaskRow key={getVal(row, "task_id")} row={row} contentSlug={contentSlug} />
         ))}
       </tbody>
     );
@@ -123,7 +126,7 @@ function TableBody({ items, groupBy }: { items: ReviewQueueRow[]; groupBy: Group
             </td>
           </tr>
           {rows.map((row) => (
-            <TaskRow key={getVal(row, "task_id")} row={row} />
+            <TaskRow key={getVal(row, "task_id")} row={row} contentSlug={contentSlug} />
           ))}
         </React.Fragment>
       ))}
@@ -139,6 +142,7 @@ export function TaskTable({
   total,
   missingPreviewCount = 0,
   statusCounts = {},
+  contentSlug = "t",
 }: TaskTableProps) {
   const start = (page - 1) * limit + 1;
   const end = Math.min(page * limit, total);
@@ -177,7 +181,7 @@ export function TaskTable({
               <th className="p-2 text-xs font-medium">Preview</th>
             </tr>
           </thead>
-          <TableBody items={items} groupBy={groupBy} />
+          <TableBody items={items} groupBy={groupBy} contentSlug={contentSlug} />
         </table>
       </div>
     </div>

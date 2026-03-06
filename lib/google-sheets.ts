@@ -188,6 +188,12 @@ const WRITE_FIELD_TO_HEADERS: Record<string, string[]> = {
   rejection_tags: ["rejection_tags"],
   validator: ["validator"],
   submitted_at: ["submitted_at"],
+  final_title_override: ["final_title_override"],
+  final_hook_override: ["final_hook_override"],
+  final_caption_override: ["final_caption_override"],
+  final_slides_json_override: ["final_slides_json_override"],
+  template_key: ["template_key"],
+  preview_url: ["preview_url"],
 };
 
 export interface ReviewQueueRowUpdate {
@@ -198,6 +204,12 @@ export interface ReviewQueueRowUpdate {
   rejection_tags?: string;
   validator?: string;
   submitted_at?: string;
+  final_title_override?: string;
+  final_hook_override?: string;
+  final_caption_override?: string;
+  final_slides_json_override?: string;
+  template_key?: string;
+  preview_url?: string;
 }
 
 /**

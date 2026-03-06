@@ -8,6 +8,13 @@ const CACHE_TTL_MS =
     ? Number(process.env.CACHE_TTL_SECONDS)
     : 15) * 1000;
 
+/** Stable content URL for a task (works before and after approval). Used for preview_url in the sheet. */
+export function getContentPreviewUrl(taskId: string): string | undefined {
+  const base = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (!base) return undefined;
+  return `${base.replace(/\/$/, "")}/content/${encodeURIComponent(taskId)}`;
+}
+
 /** Convert a DB row (any types) to ReviewQueueRow (string | undefined). */
 function rowToReviewRow(raw: Record<string, unknown>): ReviewQueueRow {
   const out: ReviewQueueRow = {};
@@ -63,10 +70,13 @@ export async function getReviewQueue(): Promise<ReviewQueueData> {
       ? []
       : sheetResult.taskIds;
 
-  // When tasks first appear in the console (status=Generated, review_status=READY), update sheet to IN_REVIEW.
+  // When tasks first appear in the console (status=Generated, review_status=READY), update sheet to IN_REVIEW and set stable preview_url.
   if (sheetResult?.markInReview.length) {
     for (const taskId of sheetResult.markInReview) {
-      await updateReviewQueueRow(taskId, { review_status: "IN_REVIEW" });
+      const fields: Parameters<typeof updateReviewQueueRow>[1] = { review_status: "IN_REVIEW" };
+      const previewUrl = getContentPreviewUrl(taskId);
+      if (previewUrl) fields.preview_url = previewUrl;
+      await updateReviewQueueRow(taskId, fields);
     }
     invalidateReviewQueueSheetCache();
     invalidateSheetCache();
@@ -160,6 +170,144 @@ export async function getTaskByTaskId(
   return { rowIndex: idx + 2, data };
 }
 
+/** Normalize task_id for fallback match (e.g. SNS_..._row0008_v1 -> SNS_..._row0008). */
+function baseTaskId(id: string): string {
+  const s = String(id).trim();
+  const m = s.match(/^(.+)_v\d+$/);
+  return m ? m[1] : s;
+}
+
+/**
+ * Load a single task by task_id directly from Supabase (no queue filter).
+ * Use for stable "content view" URLs that work before and after approval.
+ * Returns the same row shape as getTaskByTaskId (with video_url from assets if needed).
+ */
+export async function getTaskByTaskIdFromSupabase(
+  taskId: string
+): Promise<{ data: ReviewQueueRow } | null> {
+  const supabase = getSupabase();
+  const { data: taskRow, error: taskError } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("task_id", taskId.trim())
+    .maybeSingle();
+
+  if (taskError || !taskRow) return null;
+
+  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(/\/$/, "");
+  const tid = String(taskRow.task_id);
+  const allIds = Array.from(new Set([tid, baseTaskId(tid)]));
+  const { data: assetsData } = await getSupabase()
+    .from("assets")
+    .select("task_id, public_url, asset_type, bucket, object_path")
+    .in("task_id", allIds)
+    .order("position", { ascending: true });
+
+  const assets = (assetsData ?? []) as {
+    task_id: string;
+    public_url: string | null;
+    bucket: string | null;
+    object_path: string | null;
+  }[];
+  let videoUrl: string | undefined;
+  for (const a of assets) {
+    let url = a.public_url ?? null;
+    if (!url && a.bucket && a.object_path && supabaseUrl) {
+      const path = a.object_path.startsWith("/") ? a.object_path.slice(1) : a.object_path;
+      url = `${supabaseUrl}/storage/v1/object/public/${a.bucket}/${path}`;
+    }
+    if (url) {
+      videoUrl = url;
+      break;
+    }
+  }
+
+  const data = rowToReviewRow(taskRow as Record<string, unknown>);
+  if (data.status != null && data.review_status == null) data.review_status = data.status;
+  if (videoUrl && !data.video_url) data.video_url = videoUrl;
+  return { data };
+}
+
+/** Default limit for approved content list. */
+const APPROVED_LIST_LIMIT = 500;
+
+/**
+ * Fetch tasks that were approved (decision = APPROVED, submit = TRUE) from Supabase.
+ * Used for the "Approved content" list; same row shape as queue (with video_url from assets).
+ * Not cached so the list stays up to date.
+ */
+export async function getApprovedContent(limit = APPROVED_LIST_LIMIT): Promise<ReviewQueueData> {
+  const supabase = getSupabase();
+  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(/\/$/, "");
+
+  const { data: tasksData, error: tasksError } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("decision", "APPROVED")
+    .eq("submit", true)
+    .order("submitted_at", { ascending: false })
+    .limit(limit);
+
+  if (tasksError) throw new Error(tasksError.message);
+
+  const tasks = (tasksData ?? []) as Record<string, unknown>[];
+  const taskIds = tasks.map((t) => t.task_id).filter(Boolean) as string[];
+
+  if (taskIds.length === 0) {
+    const { keys, keyToOriginal, rawHeaders } = buildKeysFromRows([]);
+    return { keyToOriginal, keys, rows: [], rawHeaders };
+  }
+
+  const baseIds = Array.from(new Set(taskIds.map((id) => baseTaskId(id))));
+  const allIds = Array.from(new Set(taskIds.concat(baseIds)));
+  const { data: assetsData } = await getSupabase()
+    .from("assets")
+    .select("task_id, public_url, asset_type, bucket, object_path")
+    .in("task_id", allIds)
+    .order("position", { ascending: true });
+
+  const assets = (assetsData ?? []) as {
+    task_id: string;
+    public_url: string | null;
+    asset_type: string | null;
+    bucket: string | null;
+    object_path: string | null;
+  }[];
+
+  const assetsByTask: Record<string, { public_url?: string }> = {};
+  const assetsByBase: Record<string, { public_url?: string }> = {};
+  for (const a of assets) {
+    let url = a.public_url ?? null;
+    if (!url && a.bucket && a.object_path && supabaseUrl) {
+      const path = a.object_path.startsWith("/") ? a.object_path.slice(1) : a.object_path;
+      url = `${supabaseUrl}/storage/v1/object/public/${a.bucket}/${path}`;
+    }
+    if (url) {
+      if (!assetsByTask[a.task_id]) assetsByTask[a.task_id] = {};
+      if (!assetsByTask[a.task_id].public_url) assetsByTask[a.task_id].public_url = url;
+      const base = baseTaskId(a.task_id);
+      if (!assetsByBase[base]) assetsByBase[base] = {};
+      if (!assetsByBase[base].public_url) assetsByBase[base].public_url = url;
+    }
+  }
+
+  const rows: ReviewQueueRow[] = tasks.map((t) => {
+    const row = rowToReviewRow(t);
+    if (row.status != null) row.review_status = row.status;
+    const tid = String(t.task_id);
+    const asset = assetsByTask[tid] ?? assetsByBase[baseTaskId(tid)];
+    if (asset?.public_url && !row.video_url) row.video_url = asset.public_url;
+    if (!row.preview_url) {
+      const previewUrl = getContentPreviewUrl(tid);
+      if (previewUrl) row.preview_url = previewUrl;
+    }
+    return row;
+  });
+
+  const { keys, keyToOriginal, rawHeaders } = buildKeysFromRows(rows);
+  return { keyToOriginal, keys, rows, rawHeaders };
+}
+
 export interface DecisionUpdate {
   decision: string;
   notes?: string;
@@ -200,15 +348,23 @@ export async function updateTaskDecision(
 
   if (error) throw new Error(error.message);
 
-  await updateReviewQueueRow(taskId, {
+  const sheetFields: Parameters<typeof updateReviewQueueRow>[1] = {
     submit: payload.submit,
-    review_status: payload.review_status,
+    review_status: payload.decision,
     decision: payload.decision,
     notes: payload.notes ?? undefined,
     rejection_tags: payload.rejection_tags ?? undefined,
     validator: payload.validator ?? undefined,
     submitted_at: payload.submitted_at,
-  });
+    final_title_override: payload.final_title_override ?? undefined,
+    final_hook_override: payload.final_hook_override ?? undefined,
+    final_caption_override: payload.final_caption_override ?? undefined,
+    final_slides_json_override: payload.final_slides_json_override ?? undefined,
+    template_key: payload.template_key ?? undefined,
+  };
+  const previewUrl = getContentPreviewUrl(taskId);
+  if (previewUrl) sheetFields.preview_url = previewUrl;
+  await updateReviewQueueRow(taskId, sheetFields);
   invalidateReviewQueueSheetCache();
   invalidateSheetCache();
 }
