@@ -8,10 +8,12 @@ const CACHE_TTL_MS =
     ? Number(process.env.CACHE_TTL_SECONDS)
     : 15) * 1000;
 
+const DEFAULT_APP_URL = "https://caf-review.vercel.app";
+
 /** Stable content URL for a task (works before and after approval). Used for preview_url in the sheet. */
-export function getContentPreviewUrl(taskId: string): string | undefined {
-  const base = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (!base) return undefined;
+export function getContentPreviewUrl(taskId: string): string {
+  const base =
+    process.env.NEXT_PUBLIC_APP_URL?.trim() || DEFAULT_APP_URL;
   return `${base.replace(/\/$/, "")}/content/${encodeURIComponent(taskId)}`;
 }
 
@@ -88,9 +90,10 @@ export async function getReviewQueue(status: QueueStatusTab = "in_review"): Prom
   // When tasks first appear in the console (status=Generated, review_status=READY), update sheet to IN_REVIEW and set stable preview_url.
   if (status === "in_review" && sheetResult.markInReview.length) {
     for (const taskId of sheetResult.markInReview) {
-      const fields: Parameters<typeof updateReviewQueueRow>[1] = { review_status: "IN_REVIEW" };
-      const previewUrl = getContentPreviewUrl(taskId);
-      if (previewUrl) fields.preview_url = previewUrl;
+      const fields: Parameters<typeof updateReviewQueueRow>[1] = {
+        review_status: "IN_REVIEW",
+        preview_url: getContentPreviewUrl(taskId),
+      };
       await updateReviewQueueRow(taskId, fields);
     }
     invalidateReviewQueueSheetCache();
@@ -284,12 +287,13 @@ export interface DecisionUpdate {
 
 /**
  * Save decision to the Review Queue sheet only (no Supabase write).
- * Sheet is source of truth; preview_url is written so the Approved/Rejected tabs show the link.
+ * Called on every submit (Approve, Reject, Needs Edit). Always writes the stable content URL to preview_url.
  */
 export async function updateTaskDecision(
   taskId: string,
   payload: DecisionUpdate
 ): Promise<void> {
+  const contentUrl = getContentPreviewUrl(taskId);
   const sheetFields: Parameters<typeof updateReviewQueueRow>[1] = {
     submit: payload.submit,
     review_status: payload.decision,
@@ -303,9 +307,8 @@ export async function updateTaskDecision(
     final_caption_override: payload.final_caption_override ?? undefined,
     final_slides_json_override: payload.final_slides_json_override ?? undefined,
     template_key: payload.template_key ?? undefined,
+    preview_url: contentUrl,
   };
-  const previewUrl = getContentPreviewUrl(taskId);
-  if (previewUrl) sheetFields.preview_url = previewUrl;
   await updateReviewQueueRow(taskId, sheetFields);
   invalidateReviewQueueSheetCache();
   invalidateSheetCache();
