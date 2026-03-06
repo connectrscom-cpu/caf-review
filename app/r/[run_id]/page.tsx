@@ -74,22 +74,22 @@ function RunContent() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 border-b bg-card px-6 py-4">
-        <div className="flex items-center gap-4">
-          <Link href="/" className="text-muted-foreground hover:text-foreground">
+      <header className="sticky top-0 z-10 border-b bg-card px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+          <Link href="/" className="text-sm text-muted-foreground hover:text-foreground">
             ← Workbench
           </Link>
-          <h1 className="text-xl font-semibold text-card-foreground">Run: {run_id}</h1>
+          <h1 className="truncate text-base font-semibold text-card-foreground sm:text-xl">Run: {run_id}</h1>
           {firstReadyTaskId && (
-            <Button size="sm" onClick={reviewNext}>
+            <Button size="sm" onClick={reviewNext} className="shrink-0">
               Review next pending
             </Button>
           )}
         </div>
       </header>
 
-      <main className="flex gap-6 p-6">
-        <div className="w-64 shrink-0">
+      <main className="flex flex-col gap-4 p-4 sm:flex-row sm:gap-6 sm:p-6">
+        <div className="w-full shrink-0 sm:w-64">
           <WorkbenchFilters
             basePath={`/r/${encodeURIComponent(run_id)}`}
             projectValues={facets.project ?? []}
@@ -100,7 +100,7 @@ function RunContent() {
             reviewStatusValues={data?.statusCounts ? Object.keys(data.statusCounts) : undefined}
           />
         </div>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 overflow-hidden">
           {loading && !data && <div className="text-muted-foreground">Loading…</div>}
           {data && !loading && (
             <TaskTable

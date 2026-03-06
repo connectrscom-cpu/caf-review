@@ -68,7 +68,7 @@ export function CarouselSlider({
   }
 
   return (
-    <div className={cn("space-y-4 rounded-lg border bg-muted/30 p-4", className)}>
+    <div className={cn("space-y-4 rounded-lg border bg-muted/30 p-3 sm:p-4", className)}>
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold">Carousel slides</h3>
         <span className="text-xs text-muted-foreground">
@@ -78,13 +78,13 @@ export function CarouselSlider({
 
       {/* Image for current slide with black arrows beside it */}
       {imageUrl && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           <button
             type="button"
             aria-label="Previous slide"
             onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
             disabled={!canPrev}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black text-white shadow-md disabled:opacity-40 disabled:cursor-not-allowed hover:enabled:bg-black/90"
+            className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full bg-black text-white shadow-md disabled:cursor-not-allowed disabled:opacity-40 hover:enabled:bg-black/90 sm:h-10 sm:w-10"
           >
             <span className="text-xl leading-none">‹</span>
           </button>
@@ -92,7 +92,7 @@ export function CarouselSlider({
             <img
               src={imageUrl}
               alt={`Slide ${currentIndex + 1}`}
-              className="h-auto w-full max-h-[50vh] object-contain"
+              className="h-auto max-h-[50vh] w-full object-contain"
             />
           </div>
           <button
@@ -100,7 +100,7 @@ export function CarouselSlider({
             aria-label="Next slide"
             onClick={() => setCurrentIndex((i) => Math.min(total - 1, i + 1))}
             disabled={!canNext}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black text-white shadow-md disabled:opacity-40 disabled:cursor-not-allowed hover:enabled:bg-black/90"
+            className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full bg-black text-white shadow-md disabled:cursor-not-allowed disabled:opacity-40 hover:enabled:bg-black/90 sm:h-10 sm:w-10"
           >
             <span className="text-xl leading-none">›</span>
           </button>
@@ -209,7 +209,7 @@ export function CarouselSlider({
             Next →
           </Button>
         </div>
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
           {slides.map((_, i) => (
             <button
               key={i}
@@ -217,7 +217,7 @@ export function CarouselSlider({
               aria-label={`Go to slide ${i + 1}`}
               onClick={() => setCurrentIndex(i)}
               className={cn(
-                "h-2 w-2 rounded-full transition-colors",
+                "h-2 w-2 rounded-full transition-colors touch-manipulation",
                 i === currentIndex
                   ? "bg-primary ring-2 ring-primary/30 ring-offset-2"
                   : "bg-muted-foreground/40 hover:bg-muted-foreground/60"

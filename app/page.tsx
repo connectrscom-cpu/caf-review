@@ -73,13 +73,13 @@ function WorkbenchContent() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 border-b bg-card px-6 py-4">
-        <h1 className="text-xl font-semibold text-card-foreground">CAF Review Console</h1>
-        <p className="text-sm text-muted-foreground">Workbench</p>
+      <header className="sticky top-0 z-10 border-b bg-card px-4 py-3 sm:px-6 sm:py-4">
+        <h1 className="text-lg font-semibold text-card-foreground sm:text-xl">CAF Review Console</h1>
+        <p className="text-xs text-muted-foreground sm:text-sm">Workbench</p>
       </header>
 
-      <main className="flex gap-6 p-6">
-        <div className="w-64 shrink-0">
+      <main className="flex flex-col gap-4 p-4 sm:flex-row sm:gap-6 sm:p-6">
+        <div className="w-full shrink-0 sm:w-64">
           <WorkbenchFilters
             projectValues={facets.project ?? []}
             runIdValues={facets.run_id ?? []}
@@ -90,7 +90,7 @@ function WorkbenchContent() {
           />
         </div>
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 overflow-hidden">
           {error && (
             <div className="mb-4 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
               {error}

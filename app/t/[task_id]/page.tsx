@@ -149,26 +149,26 @@ export default function TaskPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 border-b bg-card px-6 py-4">
-        <div className="flex items-center gap-4">
-          <Link href="/" className="text-muted-foreground hover:text-foreground">
+      <header className="sticky top-0 z-10 border-b bg-card px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+          <Link href="/" className="text-sm text-muted-foreground hover:text-foreground">
             ← Workbench
           </Link>
           {runId && (
             <Link
               href={`/r/${encodeURIComponent(runId)}`}
-              className="text-muted-foreground hover:text-foreground"
+              className="text-sm text-muted-foreground hover:text-foreground"
             >
               Run: {runId}
             </Link>
           )}
-          <h1 className="truncate text-lg font-semibold text-card-foreground">
+          <h1 className="min-w-0 truncate text-base font-semibold text-card-foreground sm:text-lg">
             {task_id}
           </h1>
         </div>
       </header>
 
-      <main className="p-6">
+      <main className="p-4 sm:p-6">
         {error && (
           <div className="mb-4 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
             {error}
@@ -177,8 +177,8 @@ export default function TaskPage() {
         {loading && !data && <div className="text-muted-foreground">Loading…</div>}
 
         {data && !loading && (
-          <div className="grid gap-8 lg:grid-cols-[1fr,340px]">
-            <div>
+          <div className="grid gap-6 lg:grid-cols-[1fr,340px] lg:gap-8">
+            <div className="min-w-0">
               <TaskViewer
                 data={data}
                 assetUrls={assetUrls}
@@ -187,7 +187,7 @@ export default function TaskPage() {
                 fallbackPreviewUrl={assetUrls?.[0]}
               />
             </div>
-            <div className="flex flex-col gap-6">
+            <div className="flex min-w-0 flex-col gap-6">
               <CarouselEdits
                 taskId={task_id}
                 runId={runId || undefined}
