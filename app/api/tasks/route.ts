@@ -6,7 +6,7 @@ import type { QueueStatusTab } from "@/lib/cache";
 
 export const dynamic = "force-dynamic";
 
-const VALID_STATUS: QueueStatusTab[] = ["in_review", "approved", "rejected"];
+const VALID_STATUS: QueueStatusTab[] = ["in_review", "approved", "rejected", "needs_edit"];
 
 export async function GET(request: NextRequest) {
   const statusParam = request.nextUrl.searchParams.get("status") ?? "in_review";

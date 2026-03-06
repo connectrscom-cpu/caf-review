@@ -17,7 +17,7 @@ type CachedQueueData = {
   rows: Record<string, string | undefined>[];
 };
 
-export type QueueStatusTab = "in_review" | "approved" | "rejected";
+export type QueueStatusTab = "in_review" | "approved" | "rejected" | "needs_edit";
 
 let queueCache: { status: QueueStatusTab; data: CachedQueueData; expiresAt: number } | null = null;
 

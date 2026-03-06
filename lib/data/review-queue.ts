@@ -73,13 +73,17 @@ export async function getReviewQueue(status: QueueStatusTab = "in_review"): Prom
       ? sheetResult.taskIds
       : status === "approved"
         ? sheetResult.approvedTaskIds
-        : sheetResult.rejectedTaskIds;
+        : status === "rejected"
+          ? sheetResult.rejectedTaskIds
+          : sheetResult.needsEditTaskIds;
   const sheetRowsByTaskId =
     status === "in_review"
       ? sheetResult.rowsByTaskId
       : status === "approved"
         ? sheetResult.approvedRowsByTaskId
-        : sheetResult.rejectedRowsByTaskId;
+        : status === "rejected"
+          ? sheetResult.rejectedRowsByTaskId
+          : sheetResult.needsEditRowsByTaskId;
 
   // When tasks first appear in the console (status=Generated, review_status=READY), update sheet to IN_REVIEW and set stable preview_url.
   if (status === "in_review" && sheetResult.markInReview.length) {
@@ -184,7 +188,8 @@ export async function getTaskByTaskId(
     sheetResult != null
       ? sheetResult.rowsByTaskId[normalizedId] ??
         sheetResult.approvedRowsByTaskId[normalizedId] ??
-        sheetResult.rejectedRowsByTaskId[normalizedId]
+        sheetResult.rejectedRowsByTaskId[normalizedId] ??
+        sheetResult.needsEditRowsByTaskId[normalizedId]
       : undefined;
   const fromSupabase = await getTaskByTaskIdFromSupabase(taskId);
   const data: ReviewQueueRow = fromSupabase

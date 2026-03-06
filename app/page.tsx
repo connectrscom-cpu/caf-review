@@ -32,8 +32,8 @@ function WorkbenchContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const status = (searchParams.get("status") ?? "in_review") as "in_review" | "approved" | "rejected";
-  const validStatus = ["in_review", "approved", "rejected"].includes(status) ? status : "in_review";
+  const status = (searchParams.get("status") ?? "in_review") as "in_review" | "approved" | "rejected" | "needs_edit";
+  const validStatus = ["in_review", "approved", "rejected", "needs_edit"].includes(status) ? status : "in_review";
 
   const queryString = useMemo(() => {
     const q = new URLSearchParams();
@@ -77,6 +77,7 @@ function WorkbenchContent() {
 
   const tabStatuses = [
     { key: "in_review" as const, label: "In Review" },
+    { key: "needs_edit" as const, label: "Waiting for Rework" },
     { key: "approved" as const, label: "Approved" },
     { key: "rejected" as const, label: "Rejected" },
   ];

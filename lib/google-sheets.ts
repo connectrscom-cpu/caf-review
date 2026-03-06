@@ -16,7 +16,7 @@ import { google } from "googleapis";
 
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const ALLOWED_IDS_CACHE_TTL_MS = 60_000; // 1 minute
-/** Cached result: in-review, approved, and rejected sets from sheet. */
+/** Cached result: in-review, approved, rejected, needs_edit sets from sheet. */
 let allowedIdsCache: {
   ids: string[];
   markInReview: string[];
@@ -25,6 +25,8 @@ let allowedIdsCache: {
   approvedRowsByTaskId: Record<string, Record<string, string>>;
   rejectedTaskIds: string[];
   rejectedRowsByTaskId: Record<string, Record<string, string>>;
+  needsEditTaskIds: string[];
+  needsEditRowsByTaskId: Record<string, Record<string, string>>;
   expiresAt: number;
 } | null = null;
 
@@ -84,7 +86,7 @@ function columnToLetter(col: number): string {
   return s;
 }
 
-export type ReviewQueueStatusTab = "in_review" | "approved" | "rejected";
+export type ReviewQueueStatusTab = "in_review" | "approved" | "rejected" | "needs_edit";
 
 export interface ReviewQueueSheetResult {
   /** Task IDs for In Review tab (not submitted, IN_REVIEW or GENERATED + READY). */
@@ -101,6 +103,10 @@ export interface ReviewQueueSheetResult {
   rejectedTaskIds: string[];
   /** Full row data for rejected tasks. */
   rejectedRowsByTaskId: Record<string, Record<string, string>>;
+  /** Task IDs for Waiting for Rework tab (decision/status=NEEDS_EDIT). */
+  needsEditTaskIds: string[];
+  /** Full row data for needs-edit tasks. */
+  needsEditRowsByTaskId: Record<string, Record<string, string>>;
 }
 
 /**
@@ -133,6 +139,8 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<ReviewQueueSheet
       approvedRowsByTaskId: allowedIdsCache.approvedRowsByTaskId,
       rejectedTaskIds: allowedIdsCache.rejectedTaskIds,
       rejectedRowsByTaskId: allowedIdsCache.rejectedRowsByTaskId,
+      needsEditTaskIds: allowedIdsCache.needsEditTaskIds,
+      needsEditRowsByTaskId: allowedIdsCache.needsEditRowsByTaskId,
     };
   }
 
@@ -154,6 +162,8 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<ReviewQueueSheet
         approvedRowsByTaskId: {} as Record<string, Record<string, string>>,
         rejectedTaskIds: [] as string[],
         rejectedRowsByTaskId: {} as Record<string, Record<string, string>>,
+        needsEditTaskIds: [] as string[],
+        needsEditRowsByTaskId: {} as Record<string, Record<string, string>>,
       };
       allowedIdsCache = {
         ids: [],
@@ -163,6 +173,8 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<ReviewQueueSheet
         approvedRowsByTaskId: {},
         rejectedTaskIds: [],
         rejectedRowsByTaskId: {},
+        needsEditTaskIds: [],
+        needsEditRowsByTaskId: {},
         expiresAt: Date.now() + ALLOWED_IDS_CACHE_TTL_MS,
       };
       return empty;
@@ -195,6 +207,8 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<ReviewQueueSheet
         approvedRowsByTaskId: {},
         rejectedTaskIds: [],
         rejectedRowsByTaskId: {},
+        needsEditTaskIds: [],
+        needsEditRowsByTaskId: {},
       };
     }
 
@@ -216,6 +230,8 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<ReviewQueueSheet
     const approvedRowsByTaskId: Record<string, Record<string, string>> = {};
     const rejectedTaskIds: string[] = [];
     const rejectedRowsByTaskId: Record<string, Record<string, string>> = {};
+    const needsEditTaskIds: string[] = [];
+    const needsEditRowsByTaskId: Record<string, Record<string, string>> = {};
 
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
@@ -246,6 +262,9 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<ReviewQueueSheet
         } else if (effectiveDecision === "REJECTED") {
           rejectedTaskIds.push(taskId);
           rejectedRowsByTaskId[taskId] = sheetRow;
+        } else if (effectiveDecision === "NEEDS_EDIT") {
+          needsEditTaskIds.push(taskId);
+          needsEditRowsByTaskId[taskId] = sheetRow;
         }
         continue;
       }
@@ -267,6 +286,8 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<ReviewQueueSheet
       approvedRowsByTaskId,
       rejectedTaskIds,
       rejectedRowsByTaskId,
+      needsEditTaskIds,
+      needsEditRowsByTaskId,
       expiresAt: Date.now() + ALLOWED_IDS_CACHE_TTL_MS,
     };
     return {
@@ -277,6 +298,8 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<ReviewQueueSheet
       approvedRowsByTaskId,
       rejectedTaskIds,
       rejectedRowsByTaskId,
+      needsEditTaskIds,
+      needsEditRowsByTaskId,
     };
   } catch {
     return null;
