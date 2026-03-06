@@ -197,6 +197,8 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<ReviewQueueSheet
         approvedRowsByTaskId: {},
         rejectedTaskIds: [],
         rejectedRowsByTaskId: {},
+        needsEditTaskIds: [],
+        needsEditRowsByTaskId: {},
         expiresAt: Date.now() + ALLOWED_IDS_CACHE_TTL_MS,
       };
       return {
