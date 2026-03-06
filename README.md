@@ -206,10 +206,22 @@ The sheet must be shared with **Editor** access (service account or OAuth user) 
 
 ## Rework types (Needs Edit)
 
-When a human reviewer sends content back for changes (“Needs Edit”), there are two kinds of rework:
+When a human reviewer sends content back for changes (“Needs Edit”), downstream can treat it as:
 
-- **Partial rework** — The reviewer only changes **overrides** (title, caption, hook, template, or slide JSON). These go to the **renderer** only; the carousel/video is re-rendered with the new text or template. No full regeneration of the content.
+- **PATCH_AND_RENDER** — Only overrides (title, caption, hook, template, slide JSON) and/or **tags that allow patch** (see below). Re-render with the new text/template; no full regeneration.
 
-- **Full rework** — The reviewer selects one or more **rejection tags** (e.g. Quality, Factual, Tone, Brand, Length, Wrong platform, Other). Using rejection tags signals that the content itself must be reworked (e.g. quality off, factual off, tone off, brand off). Downstream (e.g. n8n / Validation) should treat this as a **full rework of the video/carousel** — regeneration, not just re-render.
+- **REGENERATE** — One or more **tags that force REGENERATE** are present (conceptual failure). Default to full rework of the video/carousel; do not patch.
 
-The Review Console shows a warning near the rejection-tags control: selecting tags will demand a full rework of the video.
+**Rule:** If any tag from the “force REGENERATE” list is present, default to **REGENERATE**. Otherwise, tags from the “allow PATCH_AND_RENDER” list (and overrides alone) default to **PATCH_AND_RENDER**. This gives clearer signal for what caused the issue and how to rework.
+
+### Recommended tag policy
+
+**Tags that force REGENERATE** (conceptual failure; default to REGENERATE, not patch):
+
+- `tone_off`, `brand_off`, `wrong_angle`, `too_generic`, `quality_low`, `too_controversial`, `unsafe_claim`, `bad_structure`, `weak_narrative`, `audience_mismatch`, `format_mismatch`, `hook_strategy_wrong`, `content_direction_wrong`
+
+**Tags that allow PATCH_AND_RENDER** (execution-level fixes):
+
+- `caption_too_long`, `hook_needs_improvement`, `typo`, `slide_4_too_long`, `cta_weak`, `hashtags_bad`, `template_not_ideal`, `visual_tweak_needed`, `script_line_needs_edit`, `camera_notes_needed`, `render_settings_change`, `slide_order_adjustment`
+
+The Review Console shows these two groups in the decision panel so reviewers can tag precisely and downstream can learn what caused the issue.

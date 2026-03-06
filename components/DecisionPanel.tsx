@@ -6,14 +6,37 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import type { DecisionValue } from "@/lib/types";
 
-const REJECTION_TAG_OPTIONS = [
-  "Quality",
-  "Factual",
-  "Tone",
-  "Brand",
-  "Length",
-  "Wrong platform",
-  "Other",
+/** Tags that force REGENERATE — conceptual failure; default to full rework, not patch. */
+const TAGS_REGENERATE = [
+  "tone_off",
+  "brand_off",
+  "wrong_angle",
+  "too_generic",
+  "quality_low",
+  "too_controversial",
+  "unsafe_claim",
+  "bad_structure",
+  "weak_narrative",
+  "audience_mismatch",
+  "format_mismatch",
+  "hook_strategy_wrong",
+  "content_direction_wrong",
+];
+
+/** Tags that allow PATCH_AND_RENDER — execution-level fixes; default to patch + re-render. */
+const TAGS_PATCH_AND_RENDER = [
+  "caption_too_long",
+  "hook_needs_improvement",
+  "typo",
+  "slide_4_too_long",
+  "cta_weak",
+  "hashtags_bad",
+  "template_not_ideal",
+  "visual_tweak_needed",
+  "script_line_needs_edit",
+  "camera_notes_needed",
+  "render_settings_change",
+  "slide_order_adjustment",
 ];
 
 export interface DecisionPanelProps {
@@ -199,27 +222,53 @@ export function DecisionPanel({
         />
       </div>
 
-      <div className="grid gap-2">
-        <Label className="text-xs">Rejection tags</Label>
-        <p className="text-xs text-amber-700 dark:text-amber-400">
-          Using rejection tags will require a <strong>full rework</strong> of the video/carousel. Text or template overrides alone only trigger a re-render.
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {REJECTION_TAG_OPTIONS.map((tag) => (
-            <button
-              key={tag}
-              type="button"
-              onClick={() => toggleTag(tag)}
-              className={cn(
-                "rounded-md border px-2 py-1 text-xs transition-colors",
-                tags.includes(tag)
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-input bg-background hover:bg-muted"
-              )}
-            >
-              {tag}
-            </button>
-          ))}
+      <div className="grid gap-3">
+        <Label className="text-xs">Rejection tags (for learning what caused the issue)</Label>
+        <div className="space-y-3 rounded-md border border-border/80 bg-muted/30 p-3">
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+              Tags that force <strong>REGENERATE</strong> (conceptual failure) — default to full rework, not patch.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {TAGS_REGENERATE.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => toggleTag(tag)}
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-xs transition-colors",
+                    tags.includes(tag)
+                      ? "border-amber-600 bg-amber-600 text-white dark:border-amber-500 dark:bg-amber-500"
+                      : "border-input bg-background hover:bg-muted"
+                  )}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+              Tags that allow <strong>PATCH_AND_RENDER</strong> (execution-level fixes).
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {TAGS_PATCH_AND_RENDER.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => toggleTag(tag)}
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-xs transition-colors",
+                    tags.includes(tag)
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-input bg-background hover:bg-muted"
+                  )}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
