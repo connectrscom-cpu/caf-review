@@ -75,9 +75,10 @@ function columnToLetter(col: number): string {
 }
 
 /**
- * Returns task_ids that are in the Review Queue sheet with status = IN_REVIEW
- * and not yet submitted (submit !== TRUE). Uses column "status" or "review_status".
- * Returns null if sheet is not configured or on error.
+ * Returns task_ids that are in the Review Queue sheet where status = IN_REVIEW
+ * AND review_status = READY, and not yet submitted (submit !== TRUE).
+ * Both "status" and "review_status" columns must exist. Returns null if sheet
+ * is not configured or on error.
  */
 export async function getReviewQueueTaskIdsFromSheet(): Promise<string[] | null> {
   const spreadsheetId = process.env.GOOGLE_REVIEW_QUEUE_SPREADSHEET_ID;
@@ -116,32 +117,38 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<string[] | null>
 
     const headers = rows[0].map((h) => String(h ?? "").trim().toLowerCase());
     const taskIdIdx = headers.indexOf("task_id");
-    const statusIdx = headers.indexOf("status") >= 0 ? headers.indexOf("status") : headers.indexOf("review_status");
+    const statusIdx = headers.indexOf("status");
+    const reviewStatusIdx = headers.indexOf("review_status");
     const submitIdx = headers.indexOf("submit");
 
-    if (taskIdIdx === -1 || statusIdx === -1) {
+    if (
+      taskIdIdx === -1 ||
+      statusIdx === -1 ||
+      reviewStatusIdx === -1
+    ) {
       allowedIdsCache = { ids: [], expiresAt: Date.now() + ALLOWED_IDS_CACHE_TTL_MS };
       return [];
     }
+
+    const norm = (val: unknown) =>
+      val != null ? String(val).trim().toUpperCase().replace(/\s+/g, "_").replace(/-/g, "_") : "";
 
     const allowed: string[] = [];
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
       const taskId = row[taskIdIdx] != null ? String(row[taskIdIdx]).trim() : "";
-      const statusVal =
-        row[statusIdx] != null
-          ? String(row[statusIdx]).trim().toUpperCase().replace(/-/g, "_")
-          : "";
+      if (!taskId) continue;
+
       const submitVal =
         submitIdx >= 0 && row[submitIdx] != null
           ? String(row[submitIdx]).trim().toUpperCase()
           : "";
+      if (submitVal === "TRUE") continue;
 
-      if (
-        taskId &&
-        statusVal === "IN_REVIEW" &&
-        submitVal !== "TRUE"
-      ) {
+      const statusVal = norm(row[statusIdx]);
+      const reviewStatusVal = norm(row[reviewStatusIdx]);
+
+      if (statusVal === "IN_REVIEW" && reviewStatusVal === "READY") {
         allowed.push(taskId);
       }
     }
