@@ -69,6 +69,7 @@ export async function getReviewQueue(): Promise<ReviewQueueData> {
     sheetResult === null || sheetResult.taskIds.length === 0
       ? []
       : sheetResult.taskIds;
+  const sheetRowsByTaskId = sheetResult?.rowsByTaskId ?? {};
 
   // When tasks first appear in the console (status=Generated, review_status=READY), update sheet to IN_REVIEW and set stable preview_url.
   if (sheetResult?.markInReview.length) {
@@ -148,6 +149,12 @@ export async function getReviewQueue(): Promise<ReviewQueueData> {
     const tid = String(t.task_id);
     const asset = assetsByTask[tid] ?? assetsByBase[baseTaskId(tid)];
     if (asset?.public_url && !row.video_url) row.video_url = asset.public_url;
+    const sheetRow = sheetRowsByTaskId[tid];
+    if (sheetRow) {
+      for (const [k, v] of Object.entries(sheetRow)) {
+        if (k) row[k] = v === "" ? undefined : v;
+      }
+    }
     return row;
   });
 

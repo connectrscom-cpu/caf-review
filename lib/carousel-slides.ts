@@ -38,6 +38,11 @@ export function createSyntheticSlides(count: number): NormalizedSlide[] {
   }));
 }
 
+/** Keys we try for headline (sheet/API may use different names). */
+const HEADLINE_KEYS = ["headline", "title", "heading", "slide_headline", "slide headline", "Headline", "Title", "Heading"];
+/** Keys we try for body text. */
+const BODY_KEYS = ["body", "text", "content", "slide_body", "slide body", "Body", "Text", "Content"];
+
 /**
  * Parse generated_slides_json into a flat list of normalized slides (cover, body, cta)
  * so we can show one per "flashcard" and edit text.
@@ -45,6 +50,7 @@ export function createSyntheticSlides(count: number): NormalizedSlide[] {
  * - Root-level array: [{ index, slide_number?, headline, body }, ...] (e.g. from Google Sheets)
  * - Object with slides: { slides: [{ headline, body }, ...] }
  * - Object with cover_slide + body_slides + cta_slide
+ * - Double-encoded string (sheet sometimes stores a string that parses to the JSON string)
  */
 export function parseSlidesFromJson(json: string | undefined): {
   slides: NormalizedSlide[];
@@ -52,14 +58,25 @@ export function parseSlidesFromJson(json: string | undefined): {
 } {
   if (!json?.trim()) return { slides: [], raw: null };
   try {
-    const parsed = JSON.parse(json) as CarouselSlidesPayload | unknown[];
+    let parsed: unknown = JSON.parse(json);
+    if (typeof parsed === "string" && parsed.trim()) {
+      try {
+        parsed = JSON.parse(parsed);
+      } catch {
+        /* keep as string, will yield no slides */
+      }
+    }
     const slides: NormalizedSlide[] = [];
     let index = 0;
 
-    const textFrom = (o: Record<string, unknown>, headlineKeys: string[], bodyKeys: string[]) => ({
-      headline: String(headlineKeys.map((k) => o[k]).find((v) => v != null && String(v).trim()) ?? ""),
-      body: String(bodyKeys.map((k) => o[k]).find((v) => v != null && String(v).trim()) ?? ""),
-    });
+    const textFrom = (o: Record<string, unknown>) => {
+      const headline = HEADLINE_KEYS.map((k) => o[k]).find((v) => v != null && String(v).trim());
+      const body = BODY_KEYS.map((k) => o[k]).find((v) => v != null && String(v).trim());
+      return {
+        headline: String(headline ?? "").trim(),
+        body: String(body ?? "").trim(),
+      };
+    };
 
     // Root-level array (e.g. from Google Sheets generated_slides_json)
     const slidesArray = Array.isArray(parsed)
@@ -72,7 +89,7 @@ export function parseSlidesFromJson(json: string | undefined): {
         : (parsed as CarouselSlidesPayload);
       for (let i = 0; i < slidesArray.length; i++) {
         const s = slidesArray[i] as Record<string, unknown>;
-        const { headline, body } = textFrom(s, ["headline", "title", "heading"], ["body", "text", "content"]);
+        const { headline, body } = textFrom(s);
         const type = i === 0 ? "cover" : i === slidesArray.length - 1 ? "cta" : "body";
         slides.push({
           index: index++,
@@ -102,7 +119,7 @@ export function parseSlidesFromJson(json: string | undefined): {
     const bodySlides = Array.isArray(raw.body_slides) ? raw.body_slides : [];
     for (const s of bodySlides) {
       const obj = s as Record<string, unknown>;
-      const { headline, body } = textFrom(obj, ["headline", "title", "heading"], ["body", "text", "content"]);
+      const { headline, body } = textFrom(obj);
       slides.push({
         index: index++,
         type: "body",

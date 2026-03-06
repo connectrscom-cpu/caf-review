@@ -16,7 +16,13 @@ import { google } from "googleapis";
 
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const ALLOWED_IDS_CACHE_TTL_MS = 60_000; // 1 minute
-let allowedIdsCache: { ids: string[]; expiresAt: number } | null = null;
+/** Cached result: task IDs, markInReview, and full row data from sheet keyed by task_id. */
+let allowedIdsCache: {
+  ids: string[];
+  markInReview: string[];
+  rowsByTaskId: Record<string, Record<string, string>>;
+  expiresAt: number;
+} | null = null;
 
 /** Auth client type accepted by google.sheets(); avoid Promise return type from getClient(). */
 type SheetsAuthClient =
@@ -79,6 +85,8 @@ export interface ReviewQueueSheetResult {
   taskIds: string[];
   /** Task IDs that had status=Generated; caller should update sheet to IN_REVIEW. */
   markInReview: string[];
+  /** Full row data from the sheet for each allowed task (e.g. generated_slides_json, generated_title). */
+  rowsByTaskId: Record<string, Record<string, string>>;
 }
 
 /**
@@ -102,11 +110,12 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<ReviewQueueSheet
     return null;
   }
 
-  if (
-    allowedIdsCache &&
-    Date.now() < allowedIdsCache.expiresAt
-  ) {
-    return { taskIds: allowedIdsCache.ids, markInReview: [] };
+  if (allowedIdsCache && Date.now() < allowedIdsCache.expiresAt) {
+    return {
+      taskIds: allowedIdsCache.ids,
+      markInReview: [],
+      rowsByTaskId: allowedIdsCache.rowsByTaskId,
+    };
   }
 
   try {
@@ -119,30 +128,47 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<ReviewQueueSheet
 
     const rows = res.data.values as string[][] | undefined;
     if (!rows || rows.length < 2) {
-      allowedIdsCache = { ids: [], expiresAt: Date.now() + ALLOWED_IDS_CACHE_TTL_MS };
-      return { taskIds: [], markInReview: [] };
+      allowedIdsCache = {
+        ids: [],
+        markInReview: [],
+        rowsByTaskId: {},
+        expiresAt: Date.now() + ALLOWED_IDS_CACHE_TTL_MS,
+      };
+      return { taskIds: [], markInReview: [], rowsByTaskId: {} };
     }
 
-    const headers = rows[0].map((h) => String(h ?? "").trim().toLowerCase());
-    const taskIdIdx = headers.indexOf("task_id");
-    const statusIdx = headers.indexOf("status");
-    const reviewStatusIdx = headers.indexOf("review_status");
-    const submitIdx = headers.indexOf("submit");
+    const rawHeaders = rows[0].map((h) => String(h ?? "").trim());
+    const headersLower = rawHeaders.map((h) => h.toLowerCase());
+    const taskIdIdx = headersLower.indexOf("task_id");
+    const statusIdx = headersLower.indexOf("status");
+    const reviewStatusIdx = headersLower.indexOf("review_status");
+    const submitIdx = headersLower.indexOf("submit");
 
-    if (
-      taskIdIdx === -1 ||
-      statusIdx === -1 ||
-      reviewStatusIdx === -1
-    ) {
-      allowedIdsCache = { ids: [], expiresAt: Date.now() + ALLOWED_IDS_CACHE_TTL_MS };
-      return { taskIds: [], markInReview: [] };
+    if (taskIdIdx === -1 || statusIdx === -1 || reviewStatusIdx === -1) {
+      allowedIdsCache = {
+        ids: [],
+        markInReview: [],
+        rowsByTaskId: {},
+        expiresAt: Date.now() + ALLOWED_IDS_CACHE_TTL_MS,
+      };
+      return { taskIds: [], markInReview: [], rowsByTaskId: {} };
     }
+
+    /** Normalize sheet header to key: "Generated slides JSON" -> "generated_slides_json" */
+    const headerToKey = (header: string): string =>
+      header
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "_")
+        .replace(/-/g, "_");
 
     const norm = (val: unknown) =>
       val != null ? String(val).trim().toUpperCase().replace(/\s+/g, "_").replace(/-/g, "_") : "";
 
     const allowed: string[] = [];
     const markInReview: string[] = [];
+    const rowsByTaskId: Record<string, Record<string, string>> = {};
+
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
       const taskId = row[taskIdIdx] != null ? String(row[taskIdIdx]).trim() : "";
@@ -162,14 +188,24 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<ReviewQueueSheet
       if (generatedAndReady || inReviewAndReady) {
         allowed.push(taskId);
         if (generatedAndReady) markInReview.push(taskId);
+        const sheetRow: Record<string, string> = {};
+        for (let c = 0; c < rawHeaders.length; c++) {
+          const key = headerToKey(rawHeaders[c]);
+          if (!key) continue;
+          const val = row[c];
+          sheetRow[key] = val != null ? String(val).trim() : "";
+        }
+        rowsByTaskId[taskId] = sheetRow;
       }
     }
 
     allowedIdsCache = {
       ids: allowed,
+      markInReview,
+      rowsByTaskId,
       expiresAt: Date.now() + ALLOWED_IDS_CACHE_TTL_MS,
     };
-    return { taskIds: allowed, markInReview };
+    return { taskIds: allowed, markInReview, rowsByTaskId };
   } catch {
     return null;
   }

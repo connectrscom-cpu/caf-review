@@ -48,7 +48,7 @@ export default function TaskPage() {
 
   useEffect(() => {
     if (initialSlides.length > 0) {
-      setEditedSlides((prev) => (prev.length !== initialSlides.length ? initialSlides : prev));
+      setEditedSlides(initialSlides);
       return;
     }
     if (assetUrls.length > 0) {
@@ -118,26 +118,30 @@ export default function TaskPage() {
   const notes = useMemo(() => (data?.notes ?? "").trim(), [data?.notes]);
   const runId = (data?.run_id ?? "").trim();
 
-  const hasEdits = useMemo(() => {
-    if (!data) return false;
+  const { hasEdits, editsSummary } = useMemo(() => {
+    const summary: string[] = [];
+    if (!data) return { hasEdits: false, editsSummary: [] };
     const initialTitle = (data.final_title_override ?? data.generated_title ?? "").trim();
     const initialHook = (data.final_hook_override ?? data.generated_hook ?? "").trim();
     const initialCaption = (data.final_caption_override ?? data.generated_caption ?? "").trim();
     const initialTemplateKey = (data.template_key ?? "").trim();
-    if (
-      editedTitle !== initialTitle ||
-      editedHook !== initialHook ||
-      editedCaption !== initialCaption ||
-      templateKey !== initialTemplateKey
-    )
-      return true;
-    if (editedSlides.length !== initialSlides.length) return true;
-    for (let i = 0; i < editedSlides.length; i++) {
-      const a = editedSlides[i];
-      const b = initialSlides[i];
-      if (!b || a.headline !== b.headline || a.body !== b.body) return true;
+    if (editedTitle !== initialTitle) summary.push("Title");
+    if (editedHook !== initialHook) summary.push("Hook");
+    if (editedCaption !== initialCaption) summary.push("Caption");
+    if (templateKey !== initialTemplateKey) summary.push("Template");
+    const hadParsedSlides = initialSlides.length > 0;
+    if (hadParsedSlides) {
+      if (editedSlides.length !== initialSlides.length) {
+        summary.push("Slides (count)");
+      } else {
+        for (let i = 0; i < editedSlides.length; i++) {
+          const a = editedSlides[i];
+          const b = initialSlides[i];
+          if (!b || a.headline !== b.headline || a.body !== b.body) summary.push(`Slide ${i + 1}`);
+        }
+      }
     }
-    return false;
+    return { hasEdits: summary.length > 0, editsSummary: summary };
   }, [
     data,
     editedTitle,
@@ -250,6 +254,7 @@ export default function TaskPage() {
                 finalSlidesJsonOverride={finalSlidesJsonOverride}
                 templateKey={templateKey}
                 hasEdits={hasEdits}
+                editsSummary={editsSummary}
               />
               <CarouselEditsExport
                 taskId={task_id}

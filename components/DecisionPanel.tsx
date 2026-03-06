@@ -30,6 +30,8 @@ export interface DecisionPanelProps {
   templateKey?: string;
   /** When true, Approve is disabled; any change must go through Needs Edit */
   hasEdits?: boolean;
+  /** Short list of what changed (e.g. ["Title", "Slide 2"]) when hasEdits is true */
+  editsSummary?: string[];
 }
 
 export function DecisionPanel({
@@ -43,6 +45,7 @@ export function DecisionPanel({
   finalSlidesJsonOverride,
   templateKey,
   hasEdits = false,
+  editsSummary = [],
 }: DecisionPanelProps) {
   const [decision, setDecision] = useState<DecisionValue | "">(
     (existingDecision as DecisionValue) || ""
@@ -156,9 +159,14 @@ export function DecisionPanel({
         </Button>
       </div>
       {hasEdits && (
-        <p className="text-xs text-muted-foreground">
-          Any change to title, hook, caption, template, or slides requires <strong>Needs Edit</strong>; Approve is only for no edits.
-        </p>
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">
+            Approve is only for no edits. Use <strong>Needs Edit</strong> when you changed:
+          </p>
+          <p className="text-xs font-medium text-amber-700 dark:text-amber-400" title="Revert these to allow Approve">
+            {editsSummary.length > 0 ? editsSummary.join(" · ") : "—"}
+          </p>
+        </div>
       )}
 
       <div className="grid gap-2">
