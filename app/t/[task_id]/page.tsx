@@ -245,7 +245,7 @@ export default function TaskPage() {
               />
               <DecisionPanel
                 taskId={task_id}
-                onSuccess={fetchTask}
+                onSuccess={() => router.push("/")}
                 existingDecision={decision}
                 existingNotes={notes}
                 finalTitleOverride={editedTitle}

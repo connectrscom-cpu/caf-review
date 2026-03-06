@@ -292,7 +292,8 @@ export async function updateReviewQueueRow(
     }
     if (dataRowIndex === -1) return false;
 
-    const sheetRow = dataRowIndex + 2; // 1-based + header row
+    // rows[0] = header (sheet row 1), rows[i] = sheet row (i+1)
+    const sheetRow = dataRowIndex + 1;
     const escapedSheetName = sheetName.replace(/'/g, "''");
     const data: { range: string; values: string[][] }[] = [];
 

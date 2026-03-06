@@ -56,6 +56,7 @@ export function DecisionPanel({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tokenInput, setTokenInput] = useState("");
+  const [submittedMessage, setSubmittedMessage] = useState<string | null>(null);
 
   const token =
     typeof window !== "undefined"
@@ -109,7 +110,8 @@ export function DecisionPanel({
         setError(msg);
         return;
       }
-      onSuccess?.();
+      setSubmittedMessage(effectiveDecision === "APPROVED" ? "Approved" : "Decision submitted");
+      setTimeout(() => onSuccess?.(), 1500);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Request failed");
     } finally {
@@ -255,12 +257,18 @@ export function DecisionPanel({
         </div>
       )}
 
+      {submittedMessage && (
+        <p className="text-sm font-medium text-green-700 dark:text-green-400">
+          {submittedMessage}. Taking you back to queue…
+        </p>
+      )}
+
       {error && (
         <p className="text-sm text-destructive">{error}</p>
       )}
 
-      <Button onClick={submit} disabled={submitting}>
-        {submitting ? "Submitting…" : "Submit decision"}
+      <Button onClick={submit} disabled={submitting || !!submittedMessage}>
+        {submitting ? "Submitting…" : submittedMessage ? "Submitted" : "Submit decision"}
       </Button>
 
       <p className="text-xs text-muted-foreground">
