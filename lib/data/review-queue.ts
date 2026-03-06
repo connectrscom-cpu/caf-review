@@ -169,6 +169,8 @@ export async function getReviewQueue(status: QueueStatusTab = "in_review"): Prom
         if (k) row[k] = v === "" ? undefined : v;
       }
     }
+    const previewUrl = getContentPreviewUrl(tid);
+    if (previewUrl && !row.preview_url) row.preview_url = previewUrl;
     return row;
   });
 
@@ -192,9 +194,7 @@ export async function getTaskByTaskId(
         sheetResult.needsEditRowsByTaskId[normalizedId]
       : undefined;
   const fromSupabase = await getTaskByTaskIdFromSupabase(taskId);
-  const data: ReviewQueueRow = fromSupabase
-    ? rowToReviewRow(fromSupabase.data as Record<string, unknown>)
-    : {};
+  const data: ReviewQueueRow = fromSupabase ? { ...fromSupabase.data } : {};
   if (sheetRow) {
     for (const [k, v] of Object.entries(sheetRow)) {
       if (k) data[k] = v === "" ? undefined : v;
@@ -202,6 +202,8 @@ export async function getTaskByTaskId(
   }
   if (Object.keys(data).length === 0) return null;
   if (data.status != null && data.review_status == null) data.review_status = data.status;
+  const previewUrl = getContentPreviewUrl(normalizedId);
+  if (previewUrl && !data.preview_url) data.preview_url = previewUrl;
   return { rowIndex: 1, data };
 }
 
@@ -260,6 +262,8 @@ export async function getTaskByTaskIdFromSupabase(
   const data = rowToReviewRow(taskRow as Record<string, unknown>);
   if (data.status != null && data.review_status == null) data.review_status = data.status;
   if (videoUrl && !data.video_url) data.video_url = videoUrl;
+  const previewUrl = getContentPreviewUrl(tid);
+  if (previewUrl && !data.preview_url) data.preview_url = previewUrl;
   return { data };
 }
 

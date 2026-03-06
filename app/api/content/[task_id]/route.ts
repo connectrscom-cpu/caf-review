@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTaskByTaskIdFromSupabase } from "@/lib/data/review-queue";
+import {
+  getTaskByTaskIdFromSupabase,
+  getTaskByTaskId,
+  getContentPreviewUrl,
+} from "@/lib/data/review-queue";
 import type { ReviewQueueRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/content/[task_id] — load task by ID from Supabase only (no queue filter).
+ * GET /api/content/[task_id] — load task by ID (Supabase first, then sheet).
  * Used for stable preview URLs that work before and after approval.
  */
 export async function GET(
@@ -16,12 +20,21 @@ export async function GET(
     const { task_id } = await params;
     const decodedId = decodeURIComponent(task_id);
 
-    const result = await getTaskByTaskIdFromSupabase(decodedId);
-    if (!result) {
+    let data: ReviewQueueRow | null = null;
+    const fromSupabase = await getTaskByTaskIdFromSupabase(decodedId);
+    if (fromSupabase) {
+      data = fromSupabase.data;
+    } else {
+      const fromQueue = await getTaskByTaskId(decodedId);
+      if (fromQueue) data = fromQueue.data;
+    }
+    if (!data) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
+    const previewUrl = getContentPreviewUrl(decodedId);
+    if (previewUrl && !data.preview_url) data.preview_url = previewUrl;
 
-    const response: { data: ReviewQueueRow } = { data: result.data };
+    const response: { data: ReviewQueueRow } = { data };
     return NextResponse.json(response);
   } catch (err) {
     console.error("GET /api/content/[task_id]", err);
