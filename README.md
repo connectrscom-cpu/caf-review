@@ -201,3 +201,15 @@ The Review Console only shows tasks that are “in” the Review Queue. That lis
 4. **Optional:** If **`DECISION_WEBHOOK_URL`** is set, the app POSTs the decision payload there (e.g. for n8n).
 
 The sheet must be shared with **Editor** access (service account or OAuth user) so the backend can write. If the sheet write fails (e.g. wrong permissions), the Supabase update still succeeds; the sheet row just won’t be updated until permissions are fixed.
+
+---
+
+## Rework types (Needs Edit)
+
+When a human reviewer sends content back for changes (“Needs Edit”), there are two kinds of rework:
+
+- **Partial rework** — The reviewer only changes **overrides** (title, caption, hook, template, or slide JSON). These go to the **renderer** only; the carousel/video is re-rendered with the new text or template. No full regeneration of the content.
+
+- **Full rework** — The reviewer selects one or more **rejection tags** (e.g. Quality, Factual, Tone, Brand, Length, Wrong platform, Other). Using rejection tags signals that the content itself must be reworked (e.g. quality off, factual off, tone off, brand off). Downstream (e.g. n8n / Validation) should treat this as a **full rework of the video/carousel** — regeneration, not just re-render.
+
+The Review Console shows a warning near the rejection-tags control: selecting tags will demand a full rework of the video.

@@ -201,6 +201,9 @@ export function DecisionPanel({
 
       <div className="grid gap-2">
         <Label className="text-xs">Rejection tags</Label>
+        <p className="text-xs text-amber-700 dark:text-amber-400">
+          Using rejection tags will require a <strong>full rework</strong> of the video/carousel. Text or template overrides alone only trigger a re-render.
+        </p>
         <div className="flex flex-wrap gap-2">
           {REJECTION_TAG_OPTIONS.map((tag) => (
             <button
