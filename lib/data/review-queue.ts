@@ -247,11 +247,12 @@ export async function getApprovedContent(limit = APPROVED_LIST_LIMIT): Promise<R
   const supabase = getSupabase();
   const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(/\/$/, "");
 
+  // submit is stored as string "TRUE" when we write from the decision API
   const { data: tasksData, error: tasksError } = await supabase
     .from("tasks")
     .select("*")
     .eq("decision", "APPROVED")
-    .eq("submit", true)
+    .eq("submit", "TRUE")
     .order("submitted_at", { ascending: false })
     .limit(limit);
 
