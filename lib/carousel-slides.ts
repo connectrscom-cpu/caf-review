@@ -67,7 +67,9 @@ export function parseSlidesFromJson(json: string | undefined): {
       : (parsed as CarouselSlidesPayload).slides;
 
     if (Array.isArray(slidesArray) && slidesArray.length > 0) {
-      const raw = Array.isArray(parsed) ? { slides: slidesArray } : (parsed as CarouselSlidesPayload);
+      const raw: CarouselSlidesPayload = Array.isArray(parsed)
+        ? ({ slides: slidesArray } as CarouselSlidesPayload)
+        : (parsed as CarouselSlidesPayload);
       for (let i = 0; i < slidesArray.length; i++) {
         const s = slidesArray[i] as Record<string, unknown>;
         const { headline, body } = textFrom(s, ["headline", "title", "heading"], ["body", "text", "content"]);

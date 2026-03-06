@@ -64,7 +64,7 @@ export default function TaskPage() {
     setEditedTitle((data.final_title_override ?? data.generated_title ?? "").trim());
     setEditedHook((data.final_hook_override ?? data.generated_hook ?? "").trim());
     setTemplateKey((data.template_key ?? "").trim());
-  }, [data?.generated_caption, data?.generated_title, data?.generated_hook, data?.final_caption_override, data?.final_title_override, data?.final_hook_override, data?.template_key, data?.task_id]);
+  }, [data]);
 
   useEffect(() => {
     fetch("/api/renderer/templates")
@@ -116,32 +116,6 @@ export default function TaskPage() {
 
   const decision = useMemo(() => (data?.decision ?? "").trim(), [data?.decision]);
   const notes = useMemo(() => (data?.notes ?? "").trim(), [data?.notes]);
-
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.key === "a" || e.key === "A") {
-        e.preventDefault();
-        if (!hasEdits) {
-          const btn = document.querySelector('[data-decision="APPROVED"]') as HTMLButtonElement;
-          btn?.click();
-        }
-      }
-      if (e.key === "e" || e.key === "E") {
-        e.preventDefault();
-        const btn = document.querySelector('[data-decision="NEEDS_EDIT"]') as HTMLButtonElement;
-        btn?.click();
-      }
-      if (e.key === "r" || e.key === "R") {
-        e.preventDefault();
-        const btn = document.querySelector('[data-decision="REJECTED"]') as HTMLButtonElement;
-        btn?.click();
-      }
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [hasEdits]);
-
   const runId = (data?.run_id ?? "").trim();
 
   const hasEdits = useMemo(() => {
@@ -173,6 +147,31 @@ export default function TaskPage() {
     editedSlides,
     initialSlides,
   ]);
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === "a" || e.key === "A") {
+        e.preventDefault();
+        if (!hasEdits) {
+          const btn = document.querySelector('[data-decision="APPROVED"]') as HTMLButtonElement;
+          btn?.click();
+        }
+      }
+      if (e.key === "e" || e.key === "E") {
+        e.preventDefault();
+        const btn = document.querySelector('[data-decision="NEEDS_EDIT"]') as HTMLButtonElement;
+        btn?.click();
+      }
+      if (e.key === "r" || e.key === "R") {
+        e.preventDefault();
+        const btn = document.querySelector('[data-decision="REJECTED"]') as HTMLButtonElement;
+        btn?.click();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [hasEdits]);
 
   const finalSlidesJsonOverride =
     editedSlides.length > 0 && rawPayload !== undefined
