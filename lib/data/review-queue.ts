@@ -56,12 +56,21 @@ export async function getReviewQueue(): Promise<ReviewQueueData> {
     };
   }
 
-  const allowedTaskIds = await getReviewQueueTaskIdsFromSheet();
+  const sheetResult = await getReviewQueueTaskIdsFromSheet();
   // If sheet is not configured or returns null, show nothing (do not show all DB tasks).
   const taskIdFilter =
-    allowedTaskIds === null || allowedTaskIds.length === 0
+    sheetResult === null || sheetResult.taskIds.length === 0
       ? []
-      : allowedTaskIds;
+      : sheetResult.taskIds;
+
+  // When tasks first appear in the console (status=Generated, review_status=READY), update sheet to IN_REVIEW.
+  if (sheetResult?.markInReview.length) {
+    for (const taskId of sheetResult.markInReview) {
+      await updateReviewQueueRow(taskId, { review_status: "IN_REVIEW" });
+    }
+    invalidateReviewQueueSheetCache();
+    invalidateSheetCache();
+  }
 
   const supabase = getSupabase();
   let query = supabase.from("tasks").select("*").order("created_at", { ascending: false });

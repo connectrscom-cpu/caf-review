@@ -74,13 +74,21 @@ function columnToLetter(col: number): string {
   return s;
 }
 
+export interface ReviewQueueSheetResult {
+  /** Task IDs to show in the Review Console. */
+  taskIds: string[];
+  /** Task IDs that had status=Generated; caller should update sheet to IN_REVIEW. */
+  markInReview: string[];
+}
+
 /**
- * Returns task_ids that are in the Review Queue sheet where status = IN_REVIEW
- * AND review_status = READY, and not yet submitted (submit !== TRUE).
- * Both "status" and "review_status" columns must exist. Returns null if sheet
- * is not configured or on error.
+ * Returns task_ids that are in the Review Queue sheet where (status = GENERATED
+ * AND review_status = READY) OR (status = IN_REVIEW AND review_status = READY),
+ * and not yet submitted (submit !== TRUE). Also returns which of those had
+ * status=Generated so the backend can update the sheet to IN_REVIEW when they
+ * are first loaded into the console. Returns null if sheet is not configured or on error.
  */
-export async function getReviewQueueTaskIdsFromSheet(): Promise<string[] | null> {
+export async function getReviewQueueTaskIdsFromSheet(): Promise<ReviewQueueSheetResult | null> {
   const spreadsheetId = process.env.GOOGLE_REVIEW_QUEUE_SPREADSHEET_ID;
   const sheetName =
     process.env.GOOGLE_REVIEW_QUEUE_SHEET_NAME ?? "Review Queue";
@@ -98,7 +106,7 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<string[] | null>
     allowedIdsCache &&
     Date.now() < allowedIdsCache.expiresAt
   ) {
-    return allowedIdsCache.ids;
+    return { taskIds: allowedIdsCache.ids, markInReview: [] };
   }
 
   try {
@@ -112,7 +120,7 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<string[] | null>
     const rows = res.data.values as string[][] | undefined;
     if (!rows || rows.length < 2) {
       allowedIdsCache = { ids: [], expiresAt: Date.now() + ALLOWED_IDS_CACHE_TTL_MS };
-      return [];
+      return { taskIds: [], markInReview: [] };
     }
 
     const headers = rows[0].map((h) => String(h ?? "").trim().toLowerCase());
@@ -127,13 +135,14 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<string[] | null>
       reviewStatusIdx === -1
     ) {
       allowedIdsCache = { ids: [], expiresAt: Date.now() + ALLOWED_IDS_CACHE_TTL_MS };
-      return [];
+      return { taskIds: [], markInReview: [] };
     }
 
     const norm = (val: unknown) =>
       val != null ? String(val).trim().toUpperCase().replace(/\s+/g, "_").replace(/-/g, "_") : "";
 
     const allowed: string[] = [];
+    const markInReview: string[] = [];
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
       const taskId = row[taskIdIdx] != null ? String(row[taskIdIdx]).trim() : "";
@@ -148,8 +157,11 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<string[] | null>
       const statusVal = norm(row[statusIdx]);
       const reviewStatusVal = norm(row[reviewStatusIdx]);
 
-      if (statusVal === "IN_REVIEW" && reviewStatusVal === "READY") {
+      const generatedAndReady = statusVal === "GENERATED" && reviewStatusVal === "READY";
+      const inReviewAndReady = statusVal === "IN_REVIEW" && reviewStatusVal === "READY";
+      if (generatedAndReady || inReviewAndReady) {
         allowed.push(taskId);
+        if (generatedAndReady) markInReview.push(taskId);
       }
     }
 
@@ -157,7 +169,7 @@ export async function getReviewQueueTaskIdsFromSheet(): Promise<string[] | null>
       ids: allowed,
       expiresAt: Date.now() + ALLOWED_IDS_CACHE_TTL_MS,
     };
-    return allowed;
+    return { taskIds: allowed, markInReview };
   } catch {
     return null;
   }
