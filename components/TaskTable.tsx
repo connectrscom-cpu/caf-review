@@ -23,6 +23,14 @@ function getVal(row: ReviewQueueRow, key: string): string {
   return (row[key] ?? "").trim();
 }
 
+function isImageUrl(url: string): boolean {
+  return /\.(png|jpg|jpeg|gif|webp|avif)(\?|$)/i.test(url);
+}
+
+function isVideoUrl(url: string): boolean {
+  return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url);
+}
+
 function TaskRow({ row, contentSlug = "t" }: { row: ReviewQueueRow; contentSlug?: "t" | "content" }) {
   const taskId = getVal(row, "task_id");
   const platform = getVal(row, "platform");
@@ -30,27 +38,39 @@ function TaskRow({ row, contentSlug = "t" }: { row: ReviewQueueRow; contentSlug?
   const reviewStatus = getVal(row, "review_status");
   const decision = getVal(row, "decision");
   const title = getVal(row, "generated_title") || taskId;
-  const previewUrl = getVal(row, "preview_url") || getVal(row, "video_url");
+  // preview_url is a stable *page* URL (/content/[task_id]) and should never be used as an <img> src.
+  const contentUrl = getVal(row, "preview_url");
+  const mediaUrl = getVal(row, "video_url");
   const taskHref = `/${contentSlug}/${encodeURIComponent(taskId)}`;
+  const [thumbFailed, setThumbFailed] = React.useState(false);
+  const canShowImage = !!mediaUrl && !thumbFailed && isImageUrl(mediaUrl);
+  const isVideo = !!mediaUrl && isVideoUrl(mediaUrl);
 
   return (
     <tr className="border-b border-border hover:bg-muted/50">
       <td className="p-2">
-        {previewUrl ? (
-          <Link
-            href={taskHref}
-            className="block w-14 h-14 rounded border bg-muted overflow-hidden shrink-0 focus:outline-none focus:ring-2 focus:ring-ring"
-            title={contentSlug === "content" ? "View content" : "Open task"}
-          >
+        <Link
+          href={taskHref}
+          className="block w-14 h-14 rounded border bg-muted overflow-hidden shrink-0 focus:outline-none focus:ring-2 focus:ring-ring"
+          title={contentSlug === "content" ? "View content" : "Open task"}
+        >
+          {canShowImage ? (
             <img
-              src={previewUrl}
+              src={mediaUrl}
               alt=""
               className="w-full h-full object-cover"
+              onError={() => setThumbFailed(true)}
             />
-          </Link>
-        ) : (
-          <span className="inline-flex w-14 h-14 rounded border border-dashed items-center justify-center text-xs text-muted-foreground">—</span>
-        )}
+          ) : isVideo ? (
+            <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+              Video
+            </div>
+          ) : (
+            <span className="inline-flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+              —
+            </span>
+          )}
+        </Link>
       </td>
       <td className="p-2 text-sm">
         <Link
@@ -90,7 +110,7 @@ function TaskRow({ row, contentSlug = "t" }: { row: ReviewQueueRow; contentSlug?
       <td className="p-2 text-sm">{getVal(row, "qc_status") || "—"}</td>
       <td className="p-2 text-sm">{getVal(row, "risk_score") || "—"}</td>
       <td className="p-2 text-sm">
-        {getVal(row, "preview_url") || getVal(row, "video_url") ? "Yes" : "—"}
+        {contentUrl ? "Yes" : "—"}
       </td>
     </tr>
   );
