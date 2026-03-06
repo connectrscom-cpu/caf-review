@@ -1,6 +1,7 @@
 import type { ReviewQueueRow } from "@/lib/types";
 import { getSupabase } from "@/lib/supabase/server";
 import { getCachedSheetData, setCachedSheetData, invalidateSheetCache } from "@/lib/cache";
+import { getReviewQueueTaskIdsFromSheet, updateReviewQueueRow, invalidateReviewQueueSheetCache } from "@/lib/google-sheets";
 
 const CACHE_TTL_MS =
   (typeof process.env.CACHE_TTL_SECONDS !== "undefined"
@@ -41,8 +42,10 @@ export interface ReviewQueueData {
 }
 
 /**
- * Fetch full review queue from Supabase: tasks table, with optional first asset per task for video_url.
- * Maps tasks.status → review_status for filters. Cached.
+ * Fetch review queue: only tasks that appear in the Validation "Review Queue" sheet
+ * with status = IN_REVIEW and submit != TRUE. Data is loaded from Supabase and
+ * filtered by the sheet; tasks.status → review_status for filters. Cached.
+ * If the sheet is not configured or returns no allowed task_ids, returns empty (never all DB tasks).
  */
 export async function getReviewQueue(): Promise<ReviewQueueData> {
   const cached = getCachedSheetData();
@@ -53,11 +56,24 @@ export async function getReviewQueue(): Promise<ReviewQueueData> {
     };
   }
 
+  const allowedTaskIds = await getReviewQueueTaskIdsFromSheet();
+  // If sheet is not configured or returns null, show nothing (do not show all DB tasks).
+  const taskIdFilter =
+    allowedTaskIds === null || allowedTaskIds.length === 0
+      ? []
+      : allowedTaskIds;
+
   const supabase = getSupabase();
-  const { data: tasksData, error: tasksError } = await supabase
-    .from("tasks")
-    .select("*")
-    .order("created_at", { ascending: false });
+  let query = supabase.from("tasks").select("*").order("created_at", { ascending: false });
+  if (taskIdFilter.length > 0) {
+    query = query.in("task_id", taskIdFilter);
+  } else {
+    // No tasks in review queue: return empty result without hitting DB for all rows
+    const { keys, keyToOriginal, rawHeaders } = buildKeysFromRows([]);
+    return { keyToOriginal, keys, rows: [], rawHeaders };
+  }
+
+  const { data: tasksData, error: tasksError } = await query;
 
   if (tasksError) throw new Error(tasksError.message);
 
@@ -174,5 +190,16 @@ export async function updateTaskDecision(
     .eq("task_id", taskId);
 
   if (error) throw new Error(error.message);
+
+  await updateReviewQueueRow(taskId, {
+    submit: payload.submit,
+    review_status: payload.review_status,
+    decision: payload.decision,
+    notes: payload.notes ?? undefined,
+    rejection_tags: payload.rejection_tags ?? undefined,
+    validator: payload.validator ?? undefined,
+    submitted_at: payload.submitted_at,
+  });
+  invalidateReviewQueueSheetCache();
   invalidateSheetCache();
 }

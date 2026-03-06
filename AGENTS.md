@@ -4,192 +4,147 @@ This repo is the **CAF Backend platform**, not just a review app. Read this for 
 
 ---
 
-## Project Scope Change
+## Project scope
 
-The project previously built as **CAF Review Console** is now the **CAF Backend Platform**.
-
-The CAF Backend is the **operational backend for the Content Automation Framework (CAF)**.
-
-It hosts three major capabilities:
+The CAF Backend is the **operational backend for the Content Automation Framework (CAF)**. It hosts three capabilities:
 
 1. **Renderer API** — generate assets from JSON (Puppeteer + Handlebars)
 2. **Template Playground** — preview and test carousel templates
-3. **Content Review Console** — review and approve generated content
+3. **Content Review Console** — review and approve generated content (only tasks in the Validation Review Queue)
 
-The renderer is integrated into this repo under `services/renderer` and must **not be rewritten**; it was **migrated** from the standalone caf-renderer project.
-
----
-
-## Existing Renderer (Migrated)
-
-CAF has a working renderer service (now in `services/renderer`).
-
-The renderer is an Express + Puppeteer service that:
-
-- accepts `POST /render` (one slide per request)
-- uses Handlebars templates (`.hbs` in `templates/`)
-- returns PNG screenshots
-- supports **sync and async** rendering (`?async=1` + poll `/render/status/:id`)
-- serves output at `GET /output/*`
-
-Current endpoints:
-
-- `POST /render` — render one slide
-- `GET /render/status/:id` — async job status
-- `GET /output/*` — static PNGs
-- `GET /health` — health + version + uptime
-- `GET /version` — version
-- `GET /templates` — list template names
+The renderer lives in `services/renderer` and was **migrated** from the standalone caf-renderer project; **do not rewrite** its core logic.
 
 ---
 
-## Target CAF Backend Architecture
+## Architecture
 
 ```
 CAF Backend
 │
 ├── Renderer Service     (services/renderer) — HTTP API for n8n + playground
-├── Template Playground — visual preview of templates (Next.js app)
-├── Review Console      — review generated content (Next.js app)
-├── Supabase Integration — assets + tasks storage
-└── Shared Renderer Engine — same Puppeteer + Handlebars for API and preview
+├── Template Playground  — visual preview of templates (Next.js app)
+├── Review Console      — review content in Validation Review Queue (Next.js app)
+├── Supabase            — tasks + assets storage; decisions written here
+└── Validation Sheet    — Google Sheet "Review Queue" = source of truth for what appears in console
 ```
 
-The renderer engine is shared between:
-
-- render API (n8n, batch jobs)
-- template playground (live preview)
+- **n8n** calls the renderer at `RENDERER_BASE_URL` and writes to Supabase; the Validation layer appends rows to the Review Queue sheet; the CAF Backend reads that sheet to decide which tasks to show.
+- The renderer engine is shared between the render API and the template playground.
 
 ---
 
-## Renderer Integration
+## Renderer (services/renderer)
 
-The renderer runs as a module inside the CAF Backend repo (`services/renderer`).
+Express + Puppeteer service:
 
-Endpoints:
+- `POST /render` — one slide
+- `GET /render/status/:id` — async job status
+- `GET /output/*` — static PNGs
+- `GET /health`, `GET /version` — health and version
+- `GET /templates` — list template names
+- `POST /render-carousel` — batch render all slides
+- `POST /preview-template` — used by Template Playground (single slide preview)
 
-- `POST /render` — one slide (existing)
-- `GET /render/status/:id` — async status (existing)
-- `GET /output/*` — rendered images (existing)
-- `POST /render-carousel` — render all slides (batch)
-- `POST /preview-template` — used by template playground (single slide preview)
-
-The same Puppeteer + Handlebars engine is reused everywhere.
+Templates are Handlebars (`.hbs`) in `templates/`. All render calls must use `RENDERER_BASE_URL` (env); no hardcoded tunnel URLs. Deploy the renderer at a **stable URL** (e.g. Railway, Fly.io, Render.com).
 
 ---
 
 ## Template Playground
 
-The CAF Backend includes a **template playground**.
-
-Purpose: let developers preview and edit carousel templates visually.
-
-Features:
-
-- choose template
-- paste slide JSON
-- live preview
-- tweak layout
-- export slides
-
-The playground uses the **same renderer engine** as the render API so preview and production renders are identical.
+- Choose template, paste slide JSON, live preview, tweak layout, export.
+- Uses the same renderer engine as the render API (`RENDERER_BASE_URL`).
 
 ---
 
 ## Review Console
 
-The review console (existing) remains part of the CAF Backend.
+**Responsibilities:** Browse tasks, preview assets, filter by project/run/platform, approve / reject / needs edit.
 
-Responsibilities:
+**Data:**
 
-- browse tasks
-- preview assets
-- filter by project / run / platform
-- approve / reject / needs edit
+- **Storage:** Supabase (`tasks`, `assets`). Decisions are written to `tasks` (decision, notes, rejection_tags, validator, submit, submitted_at, status).
+- **What appears:** Only tasks that are in the **Validation "Review Queue"** Google Sheet with:
+  - **`status` = `IN_REVIEW`** (sheet column `status` or `review_status`)
+  - **`submit` ≠ TRUE** (not yet submitted)
 
-Data source: **Supabase** (`tasks`, `assets`).
+So the **sheet is the source of truth** for “waiting for review.” Task list is built by:
 
----
+1. Reading the Review Queue sheet (Google Sheets API, service account) → list of `task_id`s that have status IN_REVIEW and are not submitted.
+2. Loading those tasks (and assets) from Supabase.
 
-## CAF Backend External API (n8n)
+If the Review Queue sheet is **not configured** (env vars missing or API error), the console shows an **empty** queue; it does **not** show all DB tasks.
 
-n8n interacts with the CAF Backend via HTTP.
+**Environment variables for the Review Queue:**
 
-Example flow:
+- `GOOGLE_REVIEW_QUEUE_SPREADSHEET_ID` — VALIDATION spreadsheet ID (from sheet URL).
+- `GOOGLE_REVIEW_QUEUE_SHEET_NAME` — optional; default `"Review Queue"`.
+- `GOOGLE_SERVICE_ACCOUNT_JSON` — full service account JSON string (serverless), **or**
+- `GOOGLE_APPLICATION_CREDENTIALS` — path to key file (local), **or**
+- **OAuth2 (no service account key):** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` — see **docs/review-queue-oauth-setup.md** when you cannot create service account keys.
 
-```
-n8n
-  → POST RENDERER_BASE_URL/render (or /render-carousel)
-  → CAF Renderer
-  → Supabase Storage / tasks / assets
-  → Review Console
-```
+**Setup for writing to the sheet:** Share the Validation spreadsheet with the service account email (from the JSON key or key file) with **Editor** access. The sheet should have columns the backend can write to: `submit`, `status` or `review_status`, `decision`, `notes`, `validator`, `submitted_at` (and optionally `rejection_tags`). When a decision is saved, the backend updates Supabase and then the matching row in the sheet by `task_id`; if the sheet is not configured or the row is missing, the save still succeeds (Supabase is updated).
 
-The CAF Backend is the **central compute layer** of CAF. All render calls must use `RENDERER_BASE_URL` (env); no hardcoded tunnel URLs.
-
----
-
-## Renderer Connectivity & Deployment Requirement
-
-This is a **deployment and connectivity requirement**, not a feature. The app must **stop depending on Cloudflare Tunnel** by giving the renderer a stable deployment and URL.
-
-### Current state (problem)
-
-- The CAF Renderer was exposed via a Cloudflare Tunnel URL.
-- The tunnel URL is ephemeral (changes); long requests can hit timeouts.
-- n8n had to call this URL directly, so every run could require updating the URL.
-
-### Target state (goal)
-
-- The renderer is reachable at a **permanent, stable URL** (e.g. `https://renderer.mycaf.com`).
-- n8n uses a single environment variable: **`RENDERER_BASE_URL`**.
-- The CAF Backend has a **Renderer Settings / Health page** showing: current `RENDERER_BASE_URL`, `/health` status, renderer version, optional queue stats.
-
-### Implementation requirements
-
-1. **Abstract the renderer base URL** — All render calls use `process.env.RENDERER_BASE_URL` (or equivalent). No node or client hardcodes a tunnel URL.
-2. **Health endpoints** — Renderer exposes `GET /health` (ok + version + uptime) and optionally `GET /version`.
-3. **Async rendering by default** — Prefer `POST /render?async=1` + polling (or job-based endpoints); long sync requests are fragile behind tunnels and in some serverless environments.
-
-### Deployment plan
-
-- Deploy the renderer as a **containerized service** on a platform that supports Puppeteer (e.g. Railway, Fly.io, Render.com, ECS).
-- Use a **stable URL** behind a domain (e.g. `renderer.<domain>`).
-
-### Definition of done
-
-- No manual URL changes per run.
-- n8n calls `{{$env.RENDERER_BASE_URL}}/render` (or equivalent).
-- Renderer is deployed once with a stable URL.
-- CAF Backend can verify renderer availability via `/health`.
-
-**Do not** "make Cloudflare Tunnel static." Tunnels are ephemeral. The correct approach is to **deploy the renderer** and stop relying on the tunnel.
+The spreadsheet must be **shared with the service account email as Editor** (required for writing decision fields back to the sheet). Implementation: `lib/google-sheets.ts` (read allowed task_ids; write `updateReviewQueueRow()` for submit, status, decision, notes, validator, submitted_at), `lib/data/review-queue.ts` (filter Supabase by sheet ids; on decision save, updates Supabase then the sheet). Cache: queue and allowed-ids are cached; both are invalidated when a decision is saved.
 
 ---
 
-## Repo Structure (Target)
+## n8n integration
+
+- n8n calls `RENDERER_BASE_URL` for `/render` (or `/render-carousel`).
+- Rendered assets and task data live in Supabase; Validation layer writes to the Review Queue sheet.
+- Optional: `DECISION_WEBHOOK_URL` — app POSTs decision payload after saving to Supabase.
+
+---
+
+## Renderer connectivity (deployment requirement)
+
+- **Goal:** Renderer at a **stable URL**; n8n uses `RENDERER_BASE_URL` only.
+- **Do not** rely on Cloudflare Tunnel as the long-term solution; deploy the renderer as a service (e.g. container with Puppeteer).
+- CAF Backend has a Renderer Settings / Health page showing base URL, `/health` status, version.
+
+---
+
+## Repo structure
 
 ```
 CAF (this repo)
-├── app/                    — Next.js: Review Console + Playground + Settings
-├── services/
-│   └── renderer/            — Express + Puppeteer renderer (server.js, templates/)
-├── supabase/
-│   └── migrations/
-├── AGENTS.md                — this file
+├── app/                    — Next.js: Review Console, Playground, Settings
+├── lib/
+│   ├── data/
+│   │   └── review-queue.ts — getReviewQueue() filters by sheet; getTaskByTaskId(); updateTaskDecision()
+│   ├── google-sheets.ts    — read task_ids from sheet; updateReviewQueueRow() writes decision fields
+│   ├── cache.ts            — queue cache; invalidateSheetCache() also clears sheet allowed-ids cache
+│   └── supabase/           — server client
+├── services/renderer/      — Express + Puppeteer renderer
+├── supabase/migrations/
+├── AGENTS.md               — this file
 └── README.md
 ```
 
 ---
 
-## Task Summary for AI / Developers
+## Environment variables (summary)
+
+| Purpose | Variables |
+|--------|-----------|
+| Supabase | `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` |
+| Decisions | `REVIEW_WRITE_TOKEN` (required for POST decision) |
+| Review Queue (what appears) | `GOOGLE_REVIEW_QUEUE_SPREADSHEET_ID`, `GOOGLE_REVIEW_QUEUE_SHEET_NAME` (optional), `GOOGLE_SERVICE_ACCOUNT_JSON` or `GOOGLE_APPLICATION_CREDENTIALS` |
+| Renderer | `RENDERER_BASE_URL` |
+| Optional | `DECISION_WEBHOOK_URL`, `CACHE_TTL_SECONDS`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_REVIEW_WRITE_TOKEN` |
+
+Where to set them: **local** → `.env` (copy from `.env.example`); **Vercel** → Project → Settings → Environment Variables; **other hosts** → that platform’s env/config UI.
+
+---
+
+## Task summary for AI / developers
 
 When working on this repo:
 
-1. **Integrate / maintain the renderer** in `services/renderer`; do not rewrite its core logic.
-2. **Expose renderer API** (existing + `/render-carousel`, `/preview-template` as needed).
-3. **Template playground** — UI to choose template, paste JSON, preview (same renderer engine).
-4. **Review console** — keep working (tasks, assets, decisions, Supabase).
-5. **Use Supabase** for assets and tasks.
-6. **RENDERER_BASE_URL** — all callers use this env; Renderer Health page shows status.
-7. **Maintain n8n compatibility** — same contract for `POST /render`, async, and output URLs.
+1. **Renderer:** Maintain in `services/renderer`; do not rewrite core logic. Expose existing + `/render-carousel`, `/preview-template` as needed.
+2. **Template Playground:** Same renderer engine; choose template, paste JSON, preview.
+3. **Review Console:** Only show tasks that are in the Validation “Review Queue” sheet with `status = IN_REVIEW` and `submit ≠ TRUE`. Data from Supabase filtered by sheet. Keep decisions writing to Supabase and optional webhook.
+4. **Review Queue source of truth:** Google Sheet. Implementation: `lib/google-sheets.ts` (task_ids from sheet), `lib/data/review-queue.ts` (filter Supabase by those ids). If sheet not configured, show empty queue.
+5. **Supabase:** Use for tasks and assets; RLS/service role as per existing setup.
+6. **RENDERER_BASE_URL:** All render calls use this env; Renderer Health page shows status.
+7. **n8n:** Same contract for `POST /render`, async, and output URLs.

@@ -1,3 +1,5 @@
+import { invalidateReviewQueueSheetCache } from "@/lib/google-sheets";
+
 const CACHE_TTL_MS =
   (typeof process.env.CACHE_TTL_SECONDS !== "undefined"
     ? Number(process.env.CACHE_TTL_SECONDS)
@@ -33,4 +35,5 @@ export function setCachedSheetData(data: CachedQueueData): void {
 
 export function invalidateSheetCache(): void {
   queueCache = null;
+  invalidateReviewQueueSheetCache();
 }
