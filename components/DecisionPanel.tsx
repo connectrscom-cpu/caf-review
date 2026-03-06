@@ -102,7 +102,11 @@ export function DecisionPanel({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(json.error ?? `HTTP ${res.status}`);
+        const msg =
+          res.status === 401
+            ? "Unauthorized: set REVIEW_WRITE_TOKEN in Vercel and send the same value (NEXT_PUBLIC_REVIEW_WRITE_TOKEN or Save token below)."
+            : json.error ?? `HTTP ${res.status}`;
+        setError(msg);
         return;
       }
       onSuccess?.();
